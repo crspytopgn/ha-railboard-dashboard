@@ -165,7 +165,7 @@ html += `<div style="display: flex; align-items: center; gap: 8px; padding: 14px
            </div>
            <div style="flex: 1; min-width: 0; padding-right: 8px;">
              <div style="display: flex; align-items: center; gap: 8px;">
-               <div style="font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${dep.destination}</div>
+               <div style="font-weight: 600; font-size: 16px; overflow: hidden; </div>
                ${badgeHtml}
              </div>
              ${callingPoints}
