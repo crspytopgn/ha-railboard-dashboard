@@ -214,6 +214,9 @@ class RailboardCardEditor extends HTMLElement {
     }
   }
 
+  customElements.define('railboard-card', RailboardCard);
+customElements.define('railboard-card-editor', RailboardCardEditor);
+
   set hass(hass) {
     this._hass = hass;
     if (this._initialized) {
