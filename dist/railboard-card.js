@@ -214,9 +214,6 @@ class RailboardCardEditor extends HTMLElement {
     }
   }
 
-  customElements.define('railboard-card', RailboardCard);
-customElements.define('railboard-card-editor', RailboardCardEditor);
-
   set hass(hass) {
     this._hass = hass;
     if (this._initialized) {
@@ -377,3 +374,6 @@ customElements.define('railboard-card-editor', RailboardCardEditor);
       badgeSwitch.addEventListener('change', (e) => {
         this._config = { ...this._config, show_operator_badge: e.target.checked };
         this.configChanged(this
+                           
+customElements.define('railboard-card', RailboardCard);
+customElements.define('railboard-card-editor', RailboardCardEditor);
