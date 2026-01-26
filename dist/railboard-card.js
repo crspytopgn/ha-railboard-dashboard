@@ -374,6 +374,8 @@ class RailboardCardEditor extends HTMLElement {
       badgeSwitch.addEventListener('change', (e) => {
         this._config = { ...this._config, show_operator_badge: e.target.checked };
         this.configChanged(this
-                           
+
 customElements.define('railboard-card', RailboardCard);
 customElements.define('railboard-card-editor', RailboardCardEditor);
+console.log('RailboardCard JS loaded');
+
