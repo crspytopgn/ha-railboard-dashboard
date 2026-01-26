@@ -181,4 +181,196 @@ class RailboardCard extends HTMLElement {
               <div style="font-size: 24px; font-weight: 700; color: ${tocColour};">${dep.expected}</div>
             </div>
             
-            <div style="flex: 1; min-width: 0;
+            <div style="flex: 1; min-width: 0; padding-right: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${dep.destination}</div>
+                ${badgeHtml}
+              </div>
+              ${callingPoints}
+            </div>
+            
+            ${platformHtml}
+            ${statusHtml}
+            
+          </div>
+        `;
+      }
+    }
+
+    this.content.innerHTML = html;
+  }
+
+  getCardSize() {
+    return 3;
+  }
+}
+
+class RailboardCardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = { ...config };
+    if (!this._initialized) {
+      this._initialized = true;
+      this.render();
+    }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._initialized) {
+      this.updateEntityPicker();
+    }
+  }
+
+  configChanged(newConfig) {
+    const event = new Event('config-changed', {
+      bubbles: true,
+      composed: true,
+    });
+    event.detail = { config: newConfig };
+    this.dispatchEvent(event);
+  }
+
+  render() {
+    this.innerHTML = `
+      <div class="card-config">
+        <div class="entity-row">
+          <label>Entity (Required)</label>
+          <select id="entity-picker">
+            <option value="">Select entity...</option>
+          </select>
+        </div>
+        
+        <div class="input-row">
+          <label>Title (Optional)</label>
+          <input type="text" id="title-input" value="${this._config.title || ''}" placeholder="e.g., Crystal Palace" />
+        </div>
+        
+        <div class="input-row">
+          <label>Max Departures</label>
+          <input type="number" id="max-input" min="1" max="50" value="${this._config.max_departures || 10}" />
+        </div>
+        
+        <div class="switch-row">
+          <label>Show Platforms</label>
+          <input type="checkbox" id="platforms-switch" ${this._config.show_platforms !== false ? 'checked' : ''} />
+        </div>
+        
+        <div class="switch-row">
+          <label>Show Status</label>
+          <input type="checkbox" id="status-switch" ${this._config.show_status !== false ? 'checked' : ''} />
+        </div>
+        
+        <div class="switch-row">
+          <label>Show Calling Points</label>
+          <input type="checkbox" id="calling-switch" ${this._config.show_calling_points !== false ? 'checked' : ''} />
+        </div>
+        
+        <div class="switch-row">
+          <label>Show Operator Badge</label>
+          <input type="checkbox" id="badge-switch" ${this._config.show_operator_badge !== false ? 'checked' : ''} />
+        </div>
+      </div>
+      
+      <style>
+        .card-config {
+          padding: 16px;
+        }
+        .entity-row, .input-row, .switch-row {
+          display: flex;
+          align-items: center;
+          margin-bottom: 12px;
+        }
+        label {
+          flex: 1;
+          font-weight: 500;
+          color: var(--primary-text-color);
+        }
+        select, input[type="text"], input[type="number"] {
+          flex: 2;
+          padding: 8px;
+          border: 1px solid var(--divider-color);
+          border-radius: 4px;
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+        }
+        input[type="checkbox"] {
+          width: 40px;
+          height: 20px;
+          cursor: pointer;
+        }
+      </style>
+    `;
+
+    this.setupListeners();
+    this.updateEntityPicker();
+  }
+
+  updateEntityPicker() {
+    if (!this._hass) return;
+    
+    const select = this.querySelector('#entity-picker');
+    if (!select) return;
+
+    const entities = Object.keys(this._hass.states)
+      .filter(eid => eid.startsWith('sensor.railboard_departures'))
+      .sort();
+
+    select.innerHTML = '<option value="">Select entity...</option>' +
+      entities.map(eid => `<option value="${eid}" ${eid === this._config.entity ? 'selected' : ''}>${eid}</option>`).join('');
+  }
+
+  setupListeners() {
+    const entityPicker = this.querySelector('#entity-picker');
+    const titleInput = this.querySelector('#title-input');
+    const maxInput = this.querySelector('#max-input');
+    const platformsSwitch = this.querySelector('#platforms-switch');
+    const statusSwitch = this.querySelector('#status-switch');
+    const callingSwitch = this.querySelector('#calling-switch');
+    const badgeSwitch = this.querySelector('#badge-switch');
+
+    if (entityPicker) {
+      entityPicker.addEventListener('change', (e) => {
+        this._config = { ...this._config, entity: e.target.value };
+        this.configChanged(this._config);
+      });
+    }
+
+    if (titleInput) {
+      titleInput.addEventListener('change', (e) => {
+        this._config = { ...this._config, title: e.target.value };
+        this.configChanged(this._config);
+      });
+    }
+
+    if (maxInput) {
+      maxInput.addEventListener('change', (e) => {
+        this._config = { ...this._config, max_departures: parseInt(e.target.value) };
+        this.configChanged(this._config);
+      });
+    }
+
+    if (platformsSwitch) {
+      platformsSwitch.addEventListener('change', (e) => {
+        this._config = { ...this._config, show_platforms: e.target.checked };
+        this.configChanged(this._config);
+      });
+    }
+
+    if (statusSwitch) {
+      statusSwitch.addEventListener('change', (e) => {
+        this._config = { ...this._config, show_status: e.target.checked };
+        this.configChanged(this._config);
+      });
+    }
+
+    if (callingSwitch) {
+      callingSwitch.addEventListener('change', (e) => {
+        this._config = { ...this._config, show_calling_points: e.target.checked };
+        this.configChanged(this._config);
+      });
+    }
+
+    if (badgeSwitch) {
+      badgeSwitch.addEventListener('change', (e) => {
+        this._config = { ...this._config, show_operator_badge: e.target.checked };
+        this.configChanged(this
