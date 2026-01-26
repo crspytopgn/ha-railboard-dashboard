@@ -13,7 +13,7 @@ class RailboardCard extends HTMLElement {
       show_calling_points: true,
       show_operator_badge: true,
       max_departures: 10,
-      min_walk_time: 0, // new walking time filter in minutes
+      min_walk_time: 0
     };
   }
 
@@ -30,7 +30,7 @@ class RailboardCard extends HTMLElement {
       show_calling_points: config.show_calling_points !== false,
       show_operator_badge: config.show_operator_badge !== false,
       max_departures: config.max_departures || 10,
-      min_walk_time: config.min_walk_time || 0,
+      min_walk_time: config.min_walk_time || 0
     };
   }
 
@@ -38,11 +38,7 @@ class RailboardCard extends HTMLElement {
     this._hass = hass;
 
     if (!this.content) {
-      this.innerHTML = `
-        <ha-card>
-          <div class="card-content"></div>
-        </ha-card>
-      `;
+      this.innerHTML = `<ha-card><div class="card-content"></div></ha-card>`;
       this.content = this.querySelector('.card-content');
     }
 
@@ -56,61 +52,93 @@ class RailboardCard extends HTMLElement {
   }
 
   renderCard(entity) {
-    let departures = entity.attributes.departures || [];
-
-    // Filter departures based on min_walk_time
-    if (this.config.min_walk_time) {
-      const now = new Date();
-      departures = departures.filter(dep => {
-        const depTime = new Date(dep.expected_time); // ensure expected_time is ISO string
-        const diffMinutes = (depTime - now) / 60000;
-        return diffMinutes >= this.config.min_walk_time;
-      });
-    }
+    const departures = entity.attributes.departures || [];
 
     const tocColours = {
-      'Southern': '#00A651','Southeastern': '#00AFEB','South Western Railway': '#0F4E8B','SWR': '#0F4E8B',
-      'Thameslink': '#D4006E','Great Northern': '#000000','London Overground': '#EE7C0E','Gatwick Express': '#E32017',
-      'Great Western Railway': '#004B37','GWR': '#004B37','c2c': '#C4007A','Greater Anglia': '#E41F1F',
-      'Chiltern Railways': '#00AEEF','CrossCountry': '#520D30','East Midlands Railway': '#FF6600','EMR': '#FF6600',
-      'LNER': '#E32017','Northern': '#0066B3','ScotRail': '#2A5C99','TransPennine Express': '#00B8F0','TPE': '#00B8F0',
-      'Avanti West Coast': '#E32017','West Midlands Railway': '#F37021','Elizabeth line': '#6950A1',
+      'Southern': '#00A651',
+      'Southeastern': '#00AFEB',
+      'South Western Railway': '#0F4E8B',
+      'SWR': '#0F4E8B',
+      'Thameslink': '#D4006E',
+      'Great Northern': '#000000',
+      'London Overground': '#EE7C0E',
+      'Gatwick Express': '#E32017',
+      'Great Western Railway': '#004B37',
+      'GWR': '#004B37',
+      'c2c': '#C4007A',
+      'Greater Anglia': '#E41F1F',
+      'Chiltern Railways': '#00AEEF',
+      'CrossCountry': '#520D30',
+      'East Midlands Railway': '#FF6600',
+      'EMR': '#FF6600',
+      'LNER': '#E32017',
+      'Northern': '#0066B3',
+      'ScotRail': '#2A5C99',
+      'TransPennine Express': '#00B8F0',
+      'TPE': '#00B8F0',
+      'Avanti West Coast': '#E32017',
+      'West Midlands Railway': '#F37021',
+      'Elizabeth line': '#6950A1'
     };
 
     const tocAbbreviations = {
-      'Southern': 'SN','Southeastern': 'SE','South Western Railway': 'SWR','Thameslink': 'TL','Great Northern': 'GN',
-      'London Overground': 'LO','Gatwick Express': 'GX','Great Western Railway': 'GWR','c2c': 'C2C','Greater Anglia': 'GA',
-      'Chiltern Railways': 'CH','CrossCountry': 'XC','East Midlands Railway': 'EMR','LNER': 'LNER','Northern': 'NT',
-      'ScotRail': 'SR','TransPennine Express': 'TPE','Avanti West Coast': 'AW','West Midlands Railway': 'WMR','Elizabeth line': 'EL',
+      'Southern': 'SN',
+      'Southeastern': 'SE',
+      'South Western Railway': 'SWR',
+      'Thameslink': 'TL',
+      'Great Northern': 'GN',
+      'London Overground': 'LO',
+      'Gatwick Express': 'GX',
+      'Great Western Railway': 'GWR',
+      'c2c': 'C2C',
+      'Greater Anglia': 'GA',
+      'Chiltern Railways': 'CH',
+      'CrossCountry': 'XC',
+      'East Midlands Railway': 'EMR',
+      'LNER': 'LNER',
+      'Northern': 'NT',
+      'ScotRail': 'SR',
+      'TransPennine Express': 'TPE',
+      'Avanti West Coast': 'AW',
+      'West Midlands Railway': 'WMR',
+      'Elizabeth line': 'EL'
     };
 
     const getTocColour = (operator) => tocColours[operator] || '#666666';
     const getTocAbbrev = (operator) => tocAbbreviations[operator] || operator.substring(0, 3).toUpperCase();
 
+    const now = new Date();
+
     let html = '';
 
-    // Card title
     if (this.config.title) {
       html += `
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 20px; margin: -16px -16px 16px -16px; border-radius: var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px) 0 0; color: white;">
           <div style="font-size: 28px; font-weight: 700;">${this.config.title}</div>
           <div style="font-size: 14px; opacity: 0.9; margin-top: 4px;">${entity.state} departures</div>
-        </div>
-      `;
+        </div>`;
     }
 
-    if (departures.length === 0) {
+    const filteredDeps = departures.filter(dep => {
+      if (!dep.expected) return false;
+      const [h, m] = dep.expected.split(':').map(Number);
+      const depTime = new Date();
+      depTime.setHours(h, m, 0, 0);
+      const diffMinutes = Math.round((depTime - now) / 60000);
+      return diffMinutes >= this.config.min_walk_time;
+    });
+
+    if (filteredDeps.length === 0) {
       html += `
         <div style="text-align: center; padding: 60px 20px; color: var(--secondary-text-color);">
           <div style="font-size: 48px; opacity: 0.3;">🚂</div>
           <div style="margin-top: 12px;">No departures available</div>
-        </div>
-      `;
+        </div>`;
     } else {
-      const maxDeps = Math.min(departures.length, this.config.max_departures);
+      const maxDeps = Math.min(filteredDeps.length, this.config.max_departures);
 
       for (let i = 0; i < maxDeps; i++) {
-        const dep = departures[i];
+        const dep = filteredDeps[i];
         const tocColour = getTocColour(dep.operator);
         const tocAbbrev = getTocAbbrev(dep.operator);
         const bgColor = i % 2 === 0 ? 'var(--card-background-color, #fafafa)' : 'var(--primary-background-color, white)';
@@ -149,34 +177,25 @@ class RailboardCard extends HTMLElement {
 
         const statusHtml = this.config.show_status
           ? `<div style="flex-shrink: 0; min-width: 85px; text-align: right;">
-               <span style="
-                  background: ${statusBg};
-                  color: ${statusColor};
-                  padding: 6px 12px;
-                  border-radius: 8px;
-                  font-size: 12px;
-                  font-weight: 600;
-                  display: inline-block;
-                  white-space: nowrap;
-                  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-               ">
-                  ${statusText}
-               </span>
+               <span style="background: ${statusBg}; color: ${statusColor}; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; display: inline-block; white-space: nowrap;">${statusText}</span>
              </div>`
           : '';
 
         html += `
-          <div style="display: flex; align-items: center; gap: 8px; padding: 14px 12px; background: ${bgColor}; border-left: 5px solid ${tocColour}; margin-bottom: 4px; border-radius: 6px;">
+          <div style="display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; padding: 14px 12px; background: ${bgColor}; border-left: 5px solid ${tocColour}; margin-bottom: 4px; border-radius: 6px;">
+            
             <div style="flex-shrink: 0; width: 70px;">
               <div style="font-size: 24px; font-weight: 700; color: ${tocColour};">${dep.expected}</div>
             </div>
-            <div style="flex: 1; min-width: 0; padding-right: 8px;">
+            
+            <div style="flex: 1 1 120px; min-width: 0; padding-right: 8px;">
               <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <div style="font-weight: 600; font-size: 16px; word-break: break-word;">${dep.destination}</div>
+                <div style="font-weight: 600; font-size: 16px; overflow-wrap: anywhere; word-break: break-word; white-space: normal;">${dep.destination}</div>
                 ${badgeHtml}
               </div>
               ${callingPoints}
             </div>
+
             ${platformHtml}
             ${statusHtml}
           </div>`;
@@ -202,16 +221,11 @@ class RailboardCardEditor extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    if (this._initialized) {
-      this.updateEntityPicker();
-    }
+    if (this._initialized) this.updateEntityPicker();
   }
 
   configChanged(newConfig) {
-    const event = new Event('config-changed', {
-      bubbles: true,
-      composed: true,
-    });
+    const event = new Event('config-changed', { bubbles: true, composed: true });
     event.detail = { config: newConfig };
     this.dispatchEvent(event);
   }
@@ -225,70 +239,49 @@ class RailboardCardEditor extends HTMLElement {
             <option value="">Select entity...</option>
           </select>
         </div>
-        
+
         <div class="input-row">
           <label>Title (Optional)</label>
           <input type="text" id="title-input" value="${this._config.title || ''}" placeholder="e.g., Crystal Palace" />
         </div>
 
         <div class="input-row">
-          <label>Walking time (minutes)</label>
-          <input type="number" id="walk-input" min="0" max="60" value="${this._config.min_walk_time || 0}" />
-        </div>
-        
-        <div class="input-row">
           <label>Max Departures</label>
           <input type="number" id="max-input" min="1" max="50" value="${this._config.max_departures || 10}" />
         </div>
-        
+
+        <div class="input-row">
+          <label>Min Walking Time (minutes)</label>
+          <input type="number" id="walk-input" min="0" max="60" value="${this._config.min_walk_time || 0}" />
+        </div>
+
         <div class="switch-row">
           <label>Show Platforms</label>
           <input type="checkbox" id="platforms-switch" ${this._config.show_platforms !== false ? 'checked' : ''} />
         </div>
-        
+
         <div class="switch-row">
           <label>Show Status</label>
           <input type="checkbox" id="status-switch" ${this._config.show_status !== false ? 'checked' : ''} />
         </div>
-        
+
         <div class="switch-row">
           <label>Show Calling Points</label>
           <input type="checkbox" id="calling-switch" ${this._config.show_calling_points !== false ? 'checked' : ''} />
         </div>
-        
+
         <div class="switch-row">
           <label>Show Operator Badge</label>
           <input type="checkbox" id="badge-switch" ${this._config.show_operator_badge !== false ? 'checked' : ''} />
         </div>
       </div>
-      
+
       <style>
-        .card-config {
-          padding: 16px;
-        }
-        .entity-row, .input-row, .switch-row {
-          display: flex;
-          align-items: center;
-          margin-bottom: 12px;
-        }
-        label {
-          flex: 1;
-          font-weight: 500;
-          color: var(--primary-text-color);
-        }
-        select, input[type="text"], input[type="number"] {
-          flex: 2;
-          padding: 8px;
-          border: 1px solid var(--divider-color);
-          border-radius: 4px;
-          background: var(--card-background-color);
-          color: var(--primary-text-color);
-        }
-        input[type="checkbox"] {
-          width: 40px;
-          height: 20px;
-          cursor: pointer;
-        }
+        .card-config { padding: 16px; }
+        .entity-row, .input-row, .switch-row { display: flex; align-items: center; margin-bottom: 12px; }
+        label { flex: 1; font-weight: 500; color: var(--primary-text-color); }
+        select, input[type="text"], input[type="number"] { flex: 2; padding: 8px; border: 1px solid var(--divider-color); border-radius: 4px; background: var(--card-background-color); color: var(--primary-text-color); }
+        input[type="checkbox"] { width: 40px; height: 20px; cursor: pointer; }
       </style>
     `;
 
@@ -298,7 +291,6 @@ class RailboardCardEditor extends HTMLElement {
 
   updateEntityPicker() {
     if (!this._hass) return;
-    
     const select = this.querySelector('#entity-picker');
     if (!select) return;
 
@@ -320,61 +312,14 @@ class RailboardCardEditor extends HTMLElement {
     const callingSwitch = this.querySelector('#calling-switch');
     const badgeSwitch = this.querySelector('#badge-switch');
 
-    if (entityPicker) {
-      entityPicker.addEventListener('change', (e) => {
-        this._config = { ...this._config, entity: e.target.value };
-        this.configChanged(this._config);
-      });
-    }
-
-    if (titleInput) {
-      titleInput.addEventListener('change', (e) => {
-        this._config = { ...this._config, title: e.target.value };
-        this.configChanged(this._config);
-      });
-    }
-
-    if (maxInput) {
-      maxInput.addEventListener('change', (e) => {
-        this._config = { ...this._config, max_departures: parseInt(e.target.value) };
-        this.configChanged(this._config);
-      });
-    }
-
-    if (walkInput) {
-      walkInput.addEventListener('change', (e) => {
-        this._config = { ...this._config, min_walk_time: parseInt(e.target.value) };
-        this.configChanged(this._config);
-      });
-    }
-
-    if (platformsSwitch) {
-      platformsSwitch.addEventListener('change', (e) => {
-        this._config = { ...this._config, show_platforms: e.target.checked };
-        this.configChanged(this._config);
-      });
-    }
-
-    if (statusSwitch) {
-      statusSwitch.addEventListener('change', (e) => {
-        this._config = { ...this._config, show_status: e.target.checked };
-        this.configChanged(this._config);
-      });
-    }
-
-    if (callingSwitch) {
-      callingSwitch.addEventListener('change', (e) => {
-        this._config = { ...this._config, show_calling_points: e.target.checked };
-        this.configChanged(this._config);
-      });
-    }
-
-    if (badgeSwitch) {
-      badgeSwitch.addEventListener('change', (e) => {
-        this._config = { ...this._config, show_operator_badge: e.target.checked };
-        this.configChanged(this._config);
-      });
-    }
+    if (entityPicker) entityPicker.addEventListener('change', e => { this._config.entity = e.target.value; this.configChanged(this._config); });
+    if (titleInput) titleInput.addEventListener('change', e => { this._config.title = e.target.value; this.configChanged(this._config); });
+    if (maxInput) maxInput.addEventListener('change', e => { this._config.max_departures = parseInt(e.target.value); this.configChanged(this._config); });
+    if (walkInput) walkInput.addEventListener('change', e => { this._config.min_walk_time = parseInt(e.target.value); this.configChanged(this._config); });
+    if (platformsSwitch) platformsSwitch.addEventListener('change', e => { this._config.show_platforms = e.target.checked; this.configChanged(this._config); });
+    if (statusSwitch) statusSwitch.addEventListener('change', e => { this._config.show_status = e.target.checked; this.configChanged(this._config); });
+    if (callingSwitch) callingSwitch.addEventListener('change', e => { this._config.show_calling_points = e.target.checked; this.configChanged(this._config); });
+    if (badgeSwitch) badgeSwitch.addEventListener('change', e => { this._config.show_operator_badge = e.target.checked; this.configChanged(this._config); });
   }
 }
 
