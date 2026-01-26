@@ -28,3 +28,6 @@ class RailboardCard extends HTMLElement {
 }
 
 customElements.define('railboard-card', RailboardCard);
+customElements.define('railboard-card-editor', RailboardCardEditor);
+console.log('RailboardCard JS loaded');
+
