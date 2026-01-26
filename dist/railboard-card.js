@@ -51,10 +51,29 @@ class RailboardCard extends HTMLElement {
   }
 
   renderCard(entity) {
-    let departures = entity.attributes.departures || [];
+let departures = entity.attributes.departures || [];
+
+// Optional: filter out trains too soon
+if (this.config.min_walk_time) {
+  const now = new Date();
+  departures = departures.filter(dep => {
+    const depTime = new Date(dep.expected_time); // Make sure dep.expected_time is a proper ISO string
+    const diffMinutes = (depTime - now) / 60000; // difference in minutes
+    return diffMinutes >= this.config.min_walk_time;
+  });
+}
     
-    // Filter by min_minutes
-    departures = departures.filter(dep => (dep.expected_minutes || 0) >= this.config.min_minutes);
+min_walk_time: config.min_walk_time || 0,
+  
+<div class="input-row">
+  <label>Minimum Walking Time (minutes)</label>
+  <input type="number" id="walk-input" min="0" value="${this._config.min_walk_time || 0}" />
+</div>
+
+walkInput.addEventListener('change', (e) => {
+  this._config = { ...this._config, min_walk_time: parseInt(e.target.value) || 0 };
+  this.configChanged(this._config);
+});
 
     const tocColours = {
       'Southern': '#00A651',
