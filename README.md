@@ -131,3 +131,19 @@ title: Crystal Palace - All Options
 
 Section labels only appear once you have more than one board configured — a single
 `entity` with no `entities` looks exactly as it always has.
+
+---
+
+## Releasing a new version (maintainers)
+
+HACS fetches this card from GitHub Releases, not plain commits to `main` — a
+release is required for updates to reach installed users. `.github/workflows/release.yml`
+automates the tag/release/asset-upload steps; trigger it either way:
+
+- **Push a tag**: `git tag v1.2.0 && git push origin v1.2.0`, or
+- **Run it manually**: Actions tab → "Release" → "Run workflow" → enter a version
+  (e.g. `1.2.0`) — no local git tagging needed.
+
+Either way it creates the GitHub Release and attaches `dist/railboard-card.js` as
+`railboard-card.js`, matching the `filename` HACS expects from `hacs.json`. The
+workflow also fails fast if `dist/` and `src/` have drifted out of sync.
