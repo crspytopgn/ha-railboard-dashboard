@@ -151,6 +151,7 @@ const CARD_STYLES = `
     overflow: hidden;
     background: var(--card-background-color, var(--ha-card-background, #fff));
   }
+  .railboard-list > *:last-child { border-bottom: none; }
   .railboard-row {
     display: flex;
     align-items: center;
@@ -159,7 +160,14 @@ const CARD_STYLES = `
     border-left: 3px solid transparent;
     border-bottom: 1px solid var(--divider-color, rgba(0,0,0,.06));
   }
-  .railboard-row:last-child { border-bottom: none; }
+  .railboard-row--expandable { cursor: pointer; }
+  .railboard-chevron {
+    flex-shrink: 0;
+    font-size: 14px;
+    color: var(--secondary-text-color);
+    transition: transform .15s ease;
+  }
+  .railboard-chevron--open { transform: rotate(90deg); }
   .railboard-time-col { flex: 0 0 52px; text-align: center; }
   .railboard-time {
     font-size: 16px;
@@ -199,15 +207,6 @@ const CARD_STYLES = `
     gap: 6px;
     margin-top: 1px;
   }
-  .railboard-calling {
-    flex: 1;
-    min-width: 0;
-    font-size: 11px;
-    color: var(--secondary-text-color);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .railboard-arrival {
     flex-shrink: 0;
     font-size: 11px;
@@ -225,6 +224,35 @@ const CARD_STYLES = `
     border-radius: 20px;
     white-space: nowrap;
   }
+  .railboard-expand {
+    padding: 8px 14px 10px 66px;
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    border-bottom: 1px solid var(--divider-color, rgba(0,0,0,.06));
+    background: var(--secondary-background-color, rgba(127,127,127,0.04));
+  }
+  .railboard-expand-state { font-style: italic; }
+  .railboard-stop {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+  }
+  .railboard-stop-time {
+    flex-shrink: 0;
+    width: 38px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary-text-color);
+  }
+  .railboard-stop-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .railboard-stop-plat { flex-shrink: 0; opacity: .8; }
 `;
 
 class RailboardCard extends HTMLElement {
@@ -268,8 +296,20 @@ class RailboardCard extends HTMLElement {
     this._hass = hass;
 
     if (!this.content) {
+      this._expandedServices = new Set();
+      this._callingPointsCache = new Map();
+      this._loadingServices = new Set();
+
       this.innerHTML = `<ha-card><style>${CARD_STYLES}</style><div class="card-content railboard-root"></div></ha-card>`;
       this.content = this.querySelector('.card-content');
+
+      this.content.addEventListener('click', (e) => {
+        const row = e.target.closest('.railboard-row--expandable');
+        if (!row) return;
+        const uid = row.dataset.serviceUid;
+        if (!uid) return;
+        this._toggleCallingPoints(uid);
+      });
     }
 
     const entity = hass.states[this.config.entity];
@@ -282,6 +322,7 @@ class RailboardCard extends HTMLElement {
   }
 
   renderCard(entity) {
+    this._lastEntity = entity;
     const departures = entity.attributes.departures || [];
 
     let html = '';
@@ -324,24 +365,22 @@ class RailboardCard extends HTMLElement {
         const tocAbbrev = escapeHtml(getTocAbbrev(dep.operator));
         const severity = getSeverity(dep, tocColour);
 
-        let callingPointsText = '';
-        if (this.config.show_calling_points && dep.calling_at && dep.calling_at.length > 0) {
-          const points = dep.calling_at.slice(0, 3).map(escapeHtml).join(' • ');
-          const more = dep.calling_at.length > 3 ? ` • +${dep.calling_at.length - 3}` : '';
-          callingPointsText = `via ${points}${more}`;
-        }
-
         let arrivalText = '';
         if (this.config.show_arrival_time && dep.arrival_time) {
           const durationText = Number.isFinite(dep.duration_minutes) ? ` · ${dep.duration_minutes}m` : '';
           arrivalText = `${escapeHtml(dep.arrival_time)}${durationText}`;
         }
 
-        const callingSpan = callingPointsText ? `<span class="railboard-calling">${callingPointsText}</span>` : '';
-        const arrivalSpan = arrivalText ? `<span class="railboard-arrival">→ ${arrivalText}</span>` : '';
-        const sublineHtml = (callingSpan || arrivalSpan)
-          ? `<div class="railboard-subline">${callingSpan}${arrivalSpan}</div>`
+        const sublineHtml = arrivalText
+          ? `<div class="railboard-subline"><span class="railboard-arrival">→ ${arrivalText}</span></div>`
           : '';
+
+        const isExpandable = this.config.show_calling_points && !!dep.service_uid;
+        const isExpanded = isExpandable && this._expandedServices.has(dep.service_uid);
+        const chevronHtml = isExpandable
+          ? `<span class="railboard-chevron${isExpanded ? ' railboard-chevron--open' : ''}">›</span>`
+          : '';
+        const expandHtml = isExpanded ? this._renderExpandPanel(dep.service_uid) : '';
 
         const badgeHtml = this.config.show_operator_badge
           ? `<span class="railboard-badge" style="background: ${tocColour};">${tocAbbrev}</span>`
@@ -360,7 +399,7 @@ class RailboardCard extends HTMLElement {
         const strikeStyle = severity.strike ? 'text-decoration: line-through; opacity: .6;' : '';
 
         html += `
-          <div class="railboard-row" style="border-left-color: ${severity.accent};${severity.rowTint ? ` background: ${severity.rowTint};` : ''}">
+          <div class="railboard-row${isExpandable ? ' railboard-row--expandable' : ''}" style="border-left-color: ${severity.accent};${severity.rowTint ? ` background: ${severity.rowTint};` : ''}"${isExpandable ? ` data-service-uid="${escapeHtml(dep.service_uid)}"` : ''}>
             <div class="railboard-time-col">
               <div class="railboard-time" style="color: ${severity.timeColor}; ${strikeStyle}">${escapeHtml(dep.expected)}</div>
               ${platformHtml}
@@ -373,7 +412,9 @@ class RailboardCard extends HTMLElement {
               ${sublineHtml}
             </div>
             ${statusHtml}
+            ${chevronHtml}
           </div>
+          ${expandHtml}
         `;
       }
 
@@ -381,6 +422,73 @@ class RailboardCard extends HTMLElement {
     }
 
     this.content.innerHTML = html;
+  }
+
+  _renderExpandPanel(uid) {
+    if (this._loadingServices.has(uid)) {
+      return `<div class="railboard-expand railboard-expand-state">Loading stops…</div>`;
+    }
+
+    const cached = this._callingPointsCache.get(uid);
+    if (!cached) {
+      return `<div class="railboard-expand railboard-expand-state">Loading stops…</div>`;
+    }
+    if (cached.error) {
+      return `<div class="railboard-expand railboard-expand-state">Couldn't load stops</div>`;
+    }
+    if (!cached.points || cached.points.length === 0) {
+      return `<div class="railboard-expand railboard-expand-state">No intermediate stops</div>`;
+    }
+
+    const stopsHtml = cached.points.map(point => {
+      const time = escapeHtml(point.expected_arrival || point.scheduled_arrival || point.expected_departure || point.scheduled_departure || '');
+      const name = escapeHtml(point.name || '');
+      const plat = point.platform ? `Plat ${escapeHtml(point.platform)}` : '';
+      const strike = point.is_cancelled ? 'text-decoration: line-through; opacity: .6;' : '';
+      return `
+        <div class="railboard-stop" style="${strike}">
+          <span class="railboard-stop-time">${time}</span>
+          <span class="railboard-stop-name">${name}</span>
+          <span class="railboard-stop-plat">${plat}</span>
+        </div>
+      `;
+    }).join('');
+
+    return `<div class="railboard-expand">${stopsHtml}</div>`;
+  }
+
+  async _toggleCallingPoints(uid) {
+    if (this._expandedServices.has(uid)) {
+      this._expandedServices.delete(uid);
+      this._rerender();
+      return;
+    }
+
+    this._expandedServices.add(uid);
+
+    if (this._callingPointsCache.has(uid)) {
+      this._rerender();
+      return;
+    }
+
+    this._loadingServices.add(uid);
+    this._rerender();
+
+    try {
+      const result = await this._hass.callService('railboard', 'get_service_detail', { service_uid: uid }, undefined, true, true);
+      const payload = result && result.response ? result.response : result;
+      const points = payload && Array.isArray(payload.calling_points) ? payload.calling_points : [];
+      this._callingPointsCache.set(uid, { points });
+    } catch (err) {
+      this._callingPointsCache.set(uid, { error: true });
+    } finally {
+      this._loadingServices.delete(uid);
+      this._rerender();
+    }
+  }
+
+  _rerender() {
+    if (this._lastEntity) this.renderCard(this._lastEntity);
   }
 
   getCardSize() { return 3; }
@@ -436,7 +544,7 @@ class RailboardCardEditor extends HTMLElement {
           <input type="checkbox" id="status-switch" ${this._config.show_status !== false ? 'checked' : ''} />
         </div>
         <div class="switch-row">
-          <label>Show Calling Points</label>
+          <label>Calling Points (tap a departure to expand)</label>
           <input type="checkbox" id="calling-switch" ${this._config.show_calling_points !== false ? 'checked' : ''} />
         </div>
         <div class="switch-row">
