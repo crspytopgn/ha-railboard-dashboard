@@ -80,6 +80,7 @@ function getSeverity(dep, tocColour) {
 
   if (dep.is_cancelled) {
     return {
+      tier: 'critical',
       accent: CRITICAL_RED,
       timeColor: CRITICAL_RED,
       pillBg: CRITICAL_RED,
@@ -92,6 +93,7 @@ function getSeverity(dep, tocColour) {
 
   if (dep.is_delayed && delay > 5) {
     return {
+      tier: 'critical',
       accent: CRITICAL_RED,
       timeColor: CRITICAL_RED,
       pillBg: CRITICAL_RED,
@@ -104,6 +106,7 @@ function getSeverity(dep, tocColour) {
 
   if (dep.is_delayed) {
     return {
+      tier: 'minor',
       accent: tocColour,
       timeColor: tocColour,
       pillBg: '#FF9500',
@@ -115,6 +118,7 @@ function getSeverity(dep, tocColour) {
   }
 
   return {
+    tier: 'ontime',
     accent: tocColour,
     timeColor: tocColour,
     pillBg: 'transparent',
@@ -286,6 +290,67 @@ const CARD_STYLES = `
     white-space: nowrap;
   }
   .railboard-stop-plat { flex-shrink: 0; opacity: .8; }
+
+  /* Dot Matrix theme: retro amber LED departure board */
+  .railboard-theme-dot-matrix {
+    font-family: 'Courier New', Courier, monospace;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    background: #000;
+  }
+  .railboard-theme-dot-matrix .railboard-list {
+    background: #000 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+  .railboard-theme-dot-matrix .railboard-row {
+    border-left-width: 0 !important;
+    border-radius: 0 !important;
+    border-bottom-color: #3a2a00 !important;
+    background: transparent !important;
+  }
+  .railboard-theme-dot-matrix .railboard-header { border-bottom-color: #3a2a00 !important; }
+  .railboard-theme-dot-matrix .railboard-expand {
+    background: transparent !important;
+    border-bottom-color: #3a2a00 !important;
+  }
+  .railboard-theme-dot-matrix .railboard-footer { border-top-color: #3a2a00 !important; }
+  .railboard-theme-dot-matrix .railboard-badge {
+    background: transparent !important;
+    color: #FFB000 !important;
+    border: 1px solid #FFB000;
+    border-radius: 0 !important;
+  }
+  .railboard-theme-dot-matrix .railboard-pill,
+  .railboard-theme-dot-matrix .railboard-alert {
+    background: transparent !important;
+    border: 1px solid currentColor !important;
+    border-radius: 0 !important;
+  }
+  /* Base amber colour (source order matters: this must precede the --critical
+     override below so equal-specificity cascade lets critical win) */
+  .railboard-theme-dot-matrix .railboard-time,
+  .railboard-theme-dot-matrix .railboard-pill,
+  .railboard-theme-dot-matrix .railboard-alert--leave,
+  .railboard-theme-dot-matrix .railboard-title,
+  .railboard-theme-dot-matrix .railboard-subtitle,
+  .railboard-theme-dot-matrix .railboard-plat,
+  .railboard-theme-dot-matrix .railboard-dest,
+  .railboard-theme-dot-matrix .railboard-arrival,
+  .railboard-theme-dot-matrix .railboard-empty,
+  .railboard-theme-dot-matrix .railboard-chevron,
+  .railboard-theme-dot-matrix .railboard-footer,
+  .railboard-theme-dot-matrix .railboard-expand,
+  .railboard-theme-dot-matrix .railboard-stop-time {
+    color: #FFB000 !important;
+    text-shadow: 0 0 4px rgba(255, 176, 0, .5);
+  }
+  .railboard-theme-dot-matrix .railboard-time--critical,
+  .railboard-theme-dot-matrix .railboard-pill--critical,
+  .railboard-theme-dot-matrix .railboard-alert--disruption {
+    color: #FF3B30 !important;
+    text-shadow: 0 0 4px rgba(255, 59, 48, .5);
+  }
 `;
 
 class RailboardCard extends HTMLElement {
@@ -297,6 +362,7 @@ class RailboardCard extends HTMLElement {
     return {
       entity: "",
       title: "",
+      board_style: "modern",
       show_platforms: true,
       show_status: true,
       show_calling_points: true,
@@ -318,6 +384,7 @@ class RailboardCard extends HTMLElement {
     this.config = {
       entity: config.entity,
       title: config.title || null,
+      board_style: config.board_style === 'dot_matrix' ? 'dot_matrix' : 'modern',
       show_platforms: config.show_platforms !== false,
       show_status: config.show_status !== false,
       show_calling_points: config.show_calling_points !== false,
@@ -362,6 +429,9 @@ class RailboardCard extends HTMLElement {
 
   renderCard(entity) {
     this._lastEntity = entity;
+
+    const themeClass = this.config.board_style === 'dot_matrix' ? 'railboard-theme-dot-matrix' : 'railboard-theme-modern';
+    this.content.className = `card-content railboard-root ${themeClass}`;
 
     const isBusMode = Array.isArray(entity.attributes.arrivals);
     const items = isBusMode ? (entity.attributes.arrivals || []) : (entity.attributes.departures || []);
@@ -489,7 +559,7 @@ class RailboardCard extends HTMLElement {
 
     const statusHtml = this.config.show_status
       ? `<div class="railboard-status">
-           <span class="railboard-pill" style="background: ${severity.pillBg}; color: ${severity.pillColor};${severity.pillBorder ? ' border: 1px solid var(--divider-color, rgba(0,0,0,.15));' : ''}">${escapeHtml(severity.pillText)}</span>
+           <span class="railboard-pill railboard-pill--${severity.tier}" style="background: ${severity.pillBg}; color: ${severity.pillColor};${severity.pillBorder ? ' border: 1px solid var(--divider-color, rgba(0,0,0,.15));' : ''}">${escapeHtml(severity.pillText)}</span>
          </div>`
       : '';
 
@@ -498,7 +568,7 @@ class RailboardCard extends HTMLElement {
     return `
       <div class="railboard-row${isExpandable ? ' railboard-row--expandable' : ''}" style="border-left-color: ${severity.accent};${severity.rowTint ? ` background: ${severity.rowTint};` : ''}"${isExpandable ? ` data-service-uid="${escapeHtml(dep.service_uid)}"` : ''}>
         <div class="railboard-time-col">
-          <div class="railboard-time" style="color: ${severity.timeColor}; ${strikeStyle}">${escapeHtml(dep.expected)}</div>
+          <div class="railboard-time railboard-time--${severity.tier}" style="color: ${severity.timeColor}; ${strikeStyle}">${escapeHtml(dep.expected)}</div>
           ${platformHtml}
         </div>
         <div class="railboard-main">
@@ -535,7 +605,7 @@ class RailboardCard extends HTMLElement {
     return `
       <div class="railboard-row" style="border-left-color: ${BUS_RED};">
         <div class="railboard-time-col">
-          <div class="railboard-time" style="${timeStyle}">${escapeHtml(etaText)}</div>
+          <div class="railboard-time${isDue ? ' railboard-time--critical' : ''}" style="${timeStyle}">${escapeHtml(etaText)}</div>
           ${clockTime ? `<div class="railboard-plat">${escapeHtml(clockTime)}</div>` : ''}
         </div>
         <div class="railboard-main">
@@ -671,6 +741,13 @@ class RailboardCardEditor extends HTMLElement {
           <input type="text" id="title-input" value="${escapeHtml(this._config.title || '')}" placeholder="e.g., Crystal Palace" />
         </div>
         <div class="input-row">
+          <label>Board Style</label>
+          <select id="style-picker">
+            <option value="modern" ${this._config.board_style !== 'dot_matrix' ? 'selected' : ''}>Modern</option>
+            <option value="dot_matrix" ${this._config.board_style === 'dot_matrix' ? 'selected' : ''}>Dot Matrix (retro LED)</option>
+          </select>
+        </div>
+        <div class="input-row">
           <label>Max Departures</label>
           <input type="number" id="max-input" min="1" max="50" value="${escapeHtml(this._config.max_departures || 10)}" />
         </div>
@@ -756,6 +833,7 @@ class RailboardCardEditor extends HTMLElement {
     const disruptionPicker = this.querySelector('#disruption-picker');
     const punctualityPicker = this.querySelector('#punctuality-picker');
     const titleInput = this.querySelector('#title-input');
+    const stylePicker = this.querySelector('#style-picker');
     const maxInput = this.querySelector('#max-input');
     const walkInput = this.querySelector('#walk-input');
     const platformsSwitch = this.querySelector('#platforms-switch');
@@ -769,6 +847,7 @@ class RailboardCardEditor extends HTMLElement {
     if (disruptionPicker) disruptionPicker.addEventListener('change', e => { this._config = { ...this._config, disruption_entity: e.target.value }; this.configChanged(this._config); });
     if (punctualityPicker) punctualityPicker.addEventListener('change', e => { this._config = { ...this._config, punctuality_entity: e.target.value }; this.configChanged(this._config); });
     if (titleInput) titleInput.addEventListener('change', e => { this._config = { ...this._config, title: e.target.value }; this.configChanged(this._config); });
+    if (stylePicker) stylePicker.addEventListener('change', e => { this._config = { ...this._config, board_style: e.target.value }; this.configChanged(this._config); });
     if (maxInput) maxInput.addEventListener('change', e => { this._config = { ...this._config, max_departures: parseIntOrDefault(e.target.value, this._config.max_departures || 10) }; this.configChanged(this._config); });
     if (walkInput) walkInput.addEventListener('change', e => { this._config = { ...this._config, min_walk_time: parseIntOrDefault(e.target.value, this._config.min_walk_time || 0) }; this.configChanged(this._config); });
     if (platformsSwitch) platformsSwitch.addEventListener('change', e => { this._config = { ...this._config, show_platforms: e.target.checked }; this.configChanged(this._config); });

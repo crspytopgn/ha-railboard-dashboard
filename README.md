@@ -10,7 +10,7 @@ A beautiful, **customizable UK train departure board card** for Home Assistant.
 
 ## Features
 
-✨ **Beautiful Design** – Clean, modern interface inspired by real UK departure boards  
+✨ **Two Board Styles** – Clean **Modern** look, or a retro amber-on-black **Dot Matrix** LED board  
 🎨 **Operator Badges** – Each train operator is shown with authentic brand colors  
 ⚙️ **Fully Customizable** – Configure all settings via the visual card editor  
 ⏱ **Walking Time Filter** – Only shows departures you can reach on foot in a given time  
@@ -79,6 +79,7 @@ Tapping a departure to expand its calling points calls the integration's
    - Choose your Railboard sensor (a `sensor.railboard_departures_*` or `sensor.railboard_bus_*` entity — the card auto-detects which one you picked)  
    - Optional: pick a Leave Now / Disruption / Punctuality sensor to enable those banners and footer  
    - Optional: Set a card title  
+   - Choose a **Board Style**: Modern (default) or Dot Matrix (retro amber LED look, forced black background regardless of your Home Assistant theme)  
    - Toggle display options: platforms, status, operator/line badge, arrival time, and tap-to-expand calling points  
    - Set **Max Departures**  
    - Set **Min Walking Time (minutes)** to filter departures you can reach  
@@ -90,6 +91,7 @@ Tapping a departure to expand its calling points calls the integration's
 type: custom:railboard-card
 entity: sensor.railboard_departures_crystal_palace
 title: Crystal Palace
+board_style: modern  # or dot_matrix for a retro amber LED look
 show_platforms: true
 show_status: true
 show_calling_points: true
