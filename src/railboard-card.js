@@ -193,13 +193,27 @@ const CARD_STYLES = `
     border-radius: 5px;
     color: #fff;
   }
+  .railboard-subline {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-top: 1px;
+  }
   .railboard-calling {
+    flex: 1;
+    min-width: 0;
     font-size: 11px;
     color: var(--secondary-text-color);
-    margin-top: 1px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .railboard-arrival {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--secondary-text-color);
+    font-variant-numeric: tabular-nums;
   }
   .railboard-status { flex: 0 0 auto; }
   .railboard-pill {
@@ -226,6 +240,7 @@ class RailboardCard extends HTMLElement {
       show_status: true,
       show_calling_points: true,
       show_operator_badge: true,
+      show_arrival_time: true,
       max_departures: 10,
       min_walk_time: 0,
     };
@@ -243,6 +258,7 @@ class RailboardCard extends HTMLElement {
       show_status: config.show_status !== false,
       show_calling_points: config.show_calling_points !== false,
       show_operator_badge: config.show_operator_badge !== false,
+      show_arrival_time: config.show_arrival_time !== false,
       max_departures: Number.isFinite(config.max_departures) ? config.max_departures : 10,
       min_walk_time: Number.isFinite(config.min_walk_time) ? config.min_walk_time : 0,
     };
@@ -308,12 +324,24 @@ class RailboardCard extends HTMLElement {
         const tocAbbrev = escapeHtml(getTocAbbrev(dep.operator));
         const severity = getSeverity(dep, tocColour);
 
-        let callingPoints = '';
+        let callingPointsText = '';
         if (this.config.show_calling_points && dep.calling_at && dep.calling_at.length > 0) {
           const points = dep.calling_at.slice(0, 3).map(escapeHtml).join(' • ');
           const more = dep.calling_at.length > 3 ? ` • +${dep.calling_at.length - 3}` : '';
-          callingPoints = `<div class="railboard-calling">via ${points}${more}</div>`;
+          callingPointsText = `via ${points}${more}`;
         }
+
+        let arrivalText = '';
+        if (this.config.show_arrival_time && dep.arrival_time) {
+          const durationText = Number.isFinite(dep.duration_minutes) ? ` · ${dep.duration_minutes}m` : '';
+          arrivalText = `${escapeHtml(dep.arrival_time)}${durationText}`;
+        }
+
+        const callingSpan = callingPointsText ? `<span class="railboard-calling">${callingPointsText}</span>` : '';
+        const arrivalSpan = arrivalText ? `<span class="railboard-arrival">→ ${arrivalText}</span>` : '';
+        const sublineHtml = (callingSpan || arrivalSpan)
+          ? `<div class="railboard-subline">${callingSpan}${arrivalSpan}</div>`
+          : '';
 
         const badgeHtml = this.config.show_operator_badge
           ? `<span class="railboard-badge" style="background: ${tocColour};">${tocAbbrev}</span>`
@@ -342,7 +370,7 @@ class RailboardCard extends HTMLElement {
                 <span class="railboard-dest" style="${strikeStyle}">${escapeHtml(dep.destination)}</span>
                 ${badgeHtml}
               </div>
-              ${callingPoints}
+              ${sublineHtml}
             </div>
             ${statusHtml}
           </div>
@@ -415,6 +443,10 @@ class RailboardCardEditor extends HTMLElement {
           <label>Show Operator Badge</label>
           <input type="checkbox" id="badge-switch" ${this._config.show_operator_badge !== false ? 'checked' : ''} />
         </div>
+        <div class="switch-row">
+          <label>Show Arrival Time</label>
+          <input type="checkbox" id="arrival-switch" ${this._config.show_arrival_time !== false ? 'checked' : ''} />
+        </div>
       </div>
       <style>
         .card-config { padding: 16px; }
@@ -450,6 +482,7 @@ class RailboardCardEditor extends HTMLElement {
     const statusSwitch = this.querySelector('#status-switch');
     const callingSwitch = this.querySelector('#calling-switch');
     const badgeSwitch = this.querySelector('#badge-switch');
+    const arrivalSwitch = this.querySelector('#arrival-switch');
 
     if (entityPicker) entityPicker.addEventListener('change', e => { this._config = { ...this._config, entity: e.target.value }; this.configChanged(this._config); });
     if (titleInput) titleInput.addEventListener('change', e => { this._config = { ...this._config, title: e.target.value }; this.configChanged(this._config); });
@@ -459,6 +492,7 @@ class RailboardCardEditor extends HTMLElement {
     if (statusSwitch) statusSwitch.addEventListener('change', e => { this._config = { ...this._config, show_status: e.target.checked }; this.configChanged(this._config); });
     if (callingSwitch) callingSwitch.addEventListener('change', e => { this._config = { ...this._config, show_calling_points: e.target.checked }; this.configChanged(this._config); });
     if (badgeSwitch) badgeSwitch.addEventListener('change', e => { this._config = { ...this._config, show_operator_badge: e.target.checked }; this.configChanged(this._config); });
+    if (arrivalSwitch) arrivalSwitch.addEventListener('change', e => { this._config = { ...this._config, show_arrival_time: e.target.checked }; this.configChanged(this._config); });
   }
 }
 

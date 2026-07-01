@@ -14,6 +14,7 @@ A beautiful, **customizable UK train departure board card** for Home Assistant.
 🎨 **Operator Badges** – Each train operator is shown with authentic brand colors  
 ⚙️ **Fully Customizable** – Configure all settings via the visual card editor  
 ⏱ **Walking Time Filter** – Only shows departures you can reach on foot in a given time  
+🕐 **Arrival Time** – Shows when each train reaches its destination, both as a clock time and journey length  
 🚂 **Real-Time Data** – Shows live departures from your Railboard sensors  
 📱 **Responsive Layout** – Adapts to tablets, phones, and large screens  
 🌙 **Theme Support** – Automatically matches your Home Assistant theme  
@@ -68,7 +69,7 @@ This card reads from Railboard sensors – it **won’t work** without them.
 5. Configure in the editor:  
    - Choose your Railboard sensor  
    - Optional: Set a card title  
-   - Toggle display options: platforms, status, calling points, operator badge  
+   - Toggle display options: platforms, status, calling points, operator badge, arrival time  
    - Set **Max Departures**  
    - Set **Min Walking Time (minutes)** to filter departures you can reach  
 6. Click **Save**  
@@ -83,5 +84,7 @@ show_platforms: true
 show_status: true
 show_calling_points: true
 show_operator_badge: true
+show_arrival_time: true
 max_departures: 10
 min_walk_time: 5  # Only show departures you can reach in 5 minutes
+```
