@@ -66,6 +66,153 @@ const TOC_ABBREVIATIONS = {
 const getTocColour = (operator) => TOC_COLOURS[operator] || '#666666';
 const getTocAbbrev = (operator) => TOC_ABBREVIATIONS[operator] || (operator || '').substring(0, 3).toUpperCase();
 
+const CRITICAL_RED = '#FF3B30';
+
+function getSeverity(dep, tocColour) {
+  const delay = dep.delay_minutes || 0;
+
+  if (dep.is_cancelled) {
+    return {
+      accent: CRITICAL_RED,
+      timeColor: CRITICAL_RED,
+      pillBg: CRITICAL_RED,
+      pillColor: '#fff',
+      pillText: 'Cancelled',
+      strike: true,
+      rowTint: 'rgba(255,59,48,0.08)',
+    };
+  }
+
+  if (dep.is_delayed && delay > 5) {
+    return {
+      accent: CRITICAL_RED,
+      timeColor: CRITICAL_RED,
+      pillBg: CRITICAL_RED,
+      pillColor: '#fff',
+      pillText: `+${delay}m late`,
+      strike: false,
+      rowTint: 'rgba(255,59,48,0.06)',
+    };
+  }
+
+  if (dep.is_delayed) {
+    return {
+      accent: tocColour,
+      timeColor: tocColour,
+      pillBg: '#FF9500',
+      pillColor: '#fff',
+      pillText: `+${delay}m`,
+      strike: false,
+      rowTint: null,
+    };
+  }
+
+  return {
+    accent: tocColour,
+    timeColor: tocColour,
+    pillBg: 'transparent',
+    pillColor: 'var(--secondary-text-color)',
+    pillText: 'On time',
+    strike: false,
+    rowTint: null,
+    pillBorder: true,
+  };
+}
+
+const CARD_STYLES = `
+  .railboard-root {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  }
+  .railboard-header {
+    padding: 0 0 10px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--divider-color, rgba(0,0,0,.08));
+  }
+  .railboard-title {
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--primary-text-color);
+  }
+  .railboard-subtitle {
+    font-size: 12px;
+    color: var(--secondary-text-color);
+    margin-top: 2px;
+  }
+  .railboard-empty {
+    text-align: center;
+    padding: 36px 16px;
+    color: var(--secondary-text-color);
+  }
+  .railboard-empty-icon { font-size: 32px; opacity: .35; }
+  .railboard-empty-text { margin-top: 8px; font-size: 13px; }
+  .railboard-list {
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--card-background-color, var(--ha-card-background, #fff));
+  }
+  .railboard-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    border-left: 3px solid transparent;
+    border-bottom: 1px solid var(--divider-color, rgba(0,0,0,.06));
+  }
+  .railboard-row:last-child { border-bottom: none; }
+  .railboard-time-col { flex: 0 0 52px; text-align: center; }
+  .railboard-time {
+    font-size: 16px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+  }
+  .railboard-plat {
+    font-size: 10px;
+    color: var(--secondary-text-color);
+    margin-top: 1px;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+  }
+  .railboard-main { flex: 1; min-width: 0; }
+  .railboard-line { display: flex; align-items: center; gap: 6px; }
+  .railboard-dest {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--primary-text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .railboard-badge {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .3px;
+    padding: 2px 6px;
+    border-radius: 5px;
+    color: #fff;
+  }
+  .railboard-calling {
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    margin-top: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .railboard-status { flex: 0 0 auto; }
+  .railboard-pill {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .2px;
+    padding: 4px 9px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+`;
+
 class RailboardCard extends HTMLElement {
   static getConfigElement() {
     return document.createElement("railboard-card-editor");
@@ -105,7 +252,7 @@ class RailboardCard extends HTMLElement {
     this._hass = hass;
 
     if (!this.content) {
-      this.innerHTML = `<ha-card><div class="card-content"></div></ha-card>`;
+      this.innerHTML = `<ha-card><style>${CARD_STYLES}</style><div class="card-content railboard-root"></div></ha-card>`;
       this.content = this.querySelector('.card-content');
     }
 
@@ -125,9 +272,9 @@ class RailboardCard extends HTMLElement {
 
     if (this.config.title) {
       html += `
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 20px; margin: -16px -16px 16px -16px; border-radius: var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px) 0 0; color: white;">
-          <div style="font-size: 28px; font-weight: 700;">${escapeHtml(this.config.title)}</div>
-          <div style="font-size: 14px; opacity: 0.9; margin-top: 4px;">${escapeHtml(entity.state)} departures</div>
+        <div class="railboard-header">
+          <div class="railboard-title">${escapeHtml(this.config.title)}</div>
+          <div class="railboard-subtitle">${escapeHtml(entity.state)} departures</div>
         </div>
       `;
     }
@@ -145,75 +292,64 @@ class RailboardCard extends HTMLElement {
 
     if (filteredDeps.length === 0) {
       html += `
-        <div style="text-align: center; padding: 60px 20px; color: var(--secondary-text-color);">
-          <div style="font-size: 48px; opacity: 0.3;">🚂</div>
-          <div style="margin-top: 12px;">No departures available</div>
+        <div class="railboard-empty">
+          <div class="railboard-empty-icon">🚂</div>
+          <div class="railboard-empty-text">No departures available</div>
         </div>
       `;
     } else {
       const maxDeps = Math.min(filteredDeps.length, this.config.max_departures);
 
+      html += `<div class="railboard-list">`;
+
       for (let i = 0; i < maxDeps; i++) {
         const dep = filteredDeps[i];
         const tocColour = getTocColour(dep.operator);
         const tocAbbrev = escapeHtml(getTocAbbrev(dep.operator));
-        const bgColor = i % 2 === 0 ? 'var(--card-background-color, #fafafa)' : 'var(--primary-background-color, white)';
-
-        let statusBg = '#dcfce7';
-        let statusColor = '#166534';
-        let statusText = 'ON TIME';
-
-        if (dep.is_cancelled) {
-          statusBg = '#fee2e2';
-          statusColor = '#991b1b';
-          statusText = 'CANCELLED';
-        } else if (dep.is_delayed) {
-          statusBg = '#fef3c7';
-          statusColor = '#92400e';
-          statusText = '+' + dep.delay_minutes + 'm';
-        }
+        const severity = getSeverity(dep, tocColour);
 
         let callingPoints = '';
         if (this.config.show_calling_points && dep.calling_at && dep.calling_at.length > 0) {
           const points = dep.calling_at.slice(0, 3).map(escapeHtml).join(' • ');
           const more = dep.calling_at.length > 3 ? ` • +${dep.calling_at.length - 3}` : '';
-          callingPoints = `<div style="font-size: 12px; color: var(--secondary-text-color); margin-top: 4px;">via ${points}${more}</div>`;
+          callingPoints = `<div class="railboard-calling">via ${points}${more}</div>`;
         }
 
         const badgeHtml = this.config.show_operator_badge
-          ? `<span style="background: ${tocColour}; color: white; padding: 3px 7px; border-radius: 4px; font-size: 11px; font-weight: 700; flex-shrink: 0;">${tocAbbrev}</span>`
+          ? `<span class="railboard-badge" style="background: ${tocColour};">${tocAbbrev}</span>`
           : '';
 
         const platformHtml = this.config.show_platforms
-          ? `<div style="flex-shrink: 0; width: 60px; text-align: center;">
-               <div style="font-size: 10px; color: var(--secondary-text-color); text-transform: uppercase; margin-bottom: 2px;">Plat</div>
-               <div style="font-size: 20px; font-weight: 700;">${escapeHtml(dep.platform || '—')}</div>
-             </div>`
+          ? `<div class="railboard-plat">Plat ${escapeHtml(dep.platform || '—')}</div>`
           : '';
 
         const statusHtml = this.config.show_status
-          ? `<div style="flex-shrink: 0; min-width: 85px; text-align: right;">
-               <span style="background: ${statusBg}; color: ${statusColor}; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; display: inline-block; white-space: nowrap;">${escapeHtml(statusText)}</span>
+          ? `<div class="railboard-status">
+               <span class="railboard-pill" style="background: ${severity.pillBg}; color: ${severity.pillColor};${severity.pillBorder ? ' border: 1px solid var(--divider-color, rgba(0,0,0,.15));' : ''}">${escapeHtml(severity.pillText)}</span>
              </div>`
           : '';
 
+        const strikeStyle = severity.strike ? 'text-decoration: line-through; opacity: .6;' : '';
+
         html += `
-          <div style="display: flex; align-items: center; gap: 8px; padding: 14px 12px; background: ${bgColor}; border-left: 5px solid ${tocColour}; margin-bottom: 4px; border-radius: 6px;">
-            <div style="flex-shrink: 0; width: 70px;">
-              <div style="font-size: 24px; font-weight: 700; color: ${tocColour};">${escapeHtml(dep.expected)}</div>
+          <div class="railboard-row" style="border-left-color: ${severity.accent};${severity.rowTint ? ` background: ${severity.rowTint};` : ''}">
+            <div class="railboard-time-col">
+              <div class="railboard-time" style="color: ${severity.timeColor}; ${strikeStyle}">${escapeHtml(dep.expected)}</div>
+              ${platformHtml}
             </div>
-            <div style="flex: 1; min-width: 0; padding-right: 8px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <div style="font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(dep.destination)}</div>
+            <div class="railboard-main">
+              <div class="railboard-line">
+                <span class="railboard-dest" style="${strikeStyle}">${escapeHtml(dep.destination)}</span>
                 ${badgeHtml}
               </div>
               ${callingPoints}
             </div>
-            ${platformHtml}
             ${statusHtml}
           </div>
         `;
       }
+
+      html += `</div>`;
     }
 
     this.content.innerHTML = html;
