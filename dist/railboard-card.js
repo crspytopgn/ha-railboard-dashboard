@@ -75,7 +75,7 @@ const getTocAbbrev = (operator) => TOC_ABBREVIATIONS[operator] || (operator || '
 
 const CRITICAL_RED = '#FF3B30';
 
-function getSeverity(dep, tocColour) {
+function getSeverity(dep) {
   const delay = dep.delay_minutes || 0;
 
   if (dep.is_cancelled) {
@@ -107,8 +107,8 @@ function getSeverity(dep, tocColour) {
   if (dep.is_delayed) {
     return {
       tier: 'minor',
-      accent: tocColour,
-      timeColor: tocColour,
+      accent: 'transparent',
+      timeColor: 'var(--primary-text-color)',
       pillBg: '#FF9500',
       pillColor: '#fff',
       pillText: `+${delay}m`,
@@ -119,8 +119,8 @@ function getSeverity(dep, tocColour) {
 
   return {
     tier: 'ontime',
-    accent: tocColour,
-    timeColor: tocColour,
+    accent: 'transparent',
+    timeColor: 'var(--primary-text-color)',
     pillBg: 'transparent',
     pillColor: 'var(--secondary-text-color)',
     pillText: 'On time',
@@ -237,6 +237,13 @@ const CARD_STYLES = `
     padding: 2px 6px;
     border-radius: 5px;
     color: #fff;
+  }
+  .railboard-badge--tiny {
+    display: inline-block;
+    font-size: 8px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-top: 2px;
   }
   .railboard-subline {
     display: flex;
@@ -530,7 +537,7 @@ class RailboardCard extends HTMLElement {
   _renderRailRow(dep) {
     const tocColour = getTocColour(dep.operator);
     const tocAbbrev = escapeHtml(getTocAbbrev(dep.operator));
-    const severity = getSeverity(dep, tocColour);
+    const severity = getSeverity(dep);
 
     let arrivalText = '';
     if (this.config.show_arrival_time && dep.arrival_time) {
@@ -550,7 +557,7 @@ class RailboardCard extends HTMLElement {
     const expandHtml = isExpanded ? this._renderExpandPanel(dep.service_uid) : '';
 
     const badgeHtml = this.config.show_operator_badge
-      ? `<span class="railboard-badge" style="background: ${tocColour};">${tocAbbrev}</span>`
+      ? `<div class="railboard-badge railboard-badge--tiny" style="background: ${tocColour};">${tocAbbrev}</div>`
       : '';
 
     const platformHtml = this.config.show_platforms
@@ -574,11 +581,11 @@ class RailboardCard extends HTMLElement {
         <div class="railboard-time-col">
           <div class="railboard-time railboard-time--${severity.tier}" style="color: ${severity.timeColor}; ${strikeStyle}">${escapeHtml(dep.expected)}</div>
           ${platformHtml}
+          ${badgeHtml}
         </div>
         <div class="railboard-main">
           <div class="railboard-line">
             <span class="railboard-dest" style="${strikeStyle}">${escapeHtml(dep.destination)}</span>
-            ${badgeHtml}
           </div>
           ${sublineHtml}
         </div>
