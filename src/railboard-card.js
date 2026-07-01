@@ -557,7 +557,11 @@ class RailboardCard extends HTMLElement {
       ? `<div class="railboard-plat">Plat ${escapeHtml(dep.platform || '—')}</div>`
       : '';
 
-    const statusHtml = this.config.show_status
+    // On-time never gets a badge (it's the default, non-actionable state).
+    // Cancelled/severely-late always shows regardless of show_status, since
+    // that's safety-relevant; the toggle only governs the minor-delay badge.
+    const showPill = severity.tier === 'critical' || (severity.tier === 'minor' && this.config.show_status);
+    const statusHtml = showPill
       ? `<div class="railboard-status">
            <span class="railboard-pill railboard-pill--${severity.tier}" style="background: ${severity.pillBg}; color: ${severity.pillColor};${severity.pillBorder ? ' border: 1px solid var(--divider-color, rgba(0,0,0,.15));' : ''}">${escapeHtml(severity.pillText)}</span>
          </div>`
@@ -760,7 +764,7 @@ class RailboardCardEditor extends HTMLElement {
           <input type="checkbox" id="platforms-switch" ${this._config.show_platforms !== false ? 'checked' : ''} />
         </div>
         <div class="switch-row">
-          <label>Show Status</label>
+          <label>Show Minor Delay Badge (cancelled/major delays always show)</label>
           <input type="checkbox" id="status-switch" ${this._config.show_status !== false ? 'checked' : ''} />
         </div>
         <div class="switch-row">
