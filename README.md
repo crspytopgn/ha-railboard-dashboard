@@ -17,6 +17,10 @@ A beautiful, **customizable UK train departure board card** for Home Assistant.
 🕐 **Arrival Time** – Shows when each train reaches its destination, both as a clock time and journey length  
 🚉 **Tap for Calling Points** – Tap a departure to fetch and expand its full stop-by-stop list on demand  
 🚂 **Real-Time Data** – Shows live departures from your Railboard sensors  
+🚶 **Leave Now Banner** – A bold banner appears once the next catchable departure is due within walking time  
+⚠️ **Disruption Alert** – A red strip flags active delays/cancellations without scanning the whole list  
+📊 **Punctuality Footer** – Shows today's rolling on-time percentage  
+🚌 **Bus Support** – Point the card at a `sensor.railboard_bus_<stop_id>` entity and it automatically renders a bus arrivals board instead  
 📱 **Responsive Layout** – Adapts to tablets, phones, and large screens  
 🌙 **Theme Support** – Automatically matches your Home Assistant theme  
 
@@ -72,9 +76,10 @@ Tapping a departure to expand its calling points calls the integration's
 3. Search for **Railboard Card**  
 4. Select it  
 5. Configure in the editor:  
-   - Choose your Railboard sensor  
+   - Choose your Railboard sensor (a `sensor.railboard_departures_*` or `sensor.railboard_bus_*` entity — the card auto-detects which one you picked)  
+   - Optional: pick a Leave Now / Disruption / Punctuality sensor to enable those banners and footer  
    - Optional: Set a card title  
-   - Toggle display options: platforms, status, operator badge, arrival time, and tap-to-expand calling points  
+   - Toggle display options: platforms, status, operator/line badge, arrival time, and tap-to-expand calling points  
    - Set **Max Departures**  
    - Set **Min Walking Time (minutes)** to filter departures you can reach  
 6. Click **Save**  
@@ -92,4 +97,14 @@ show_operator_badge: true
 show_arrival_time: true
 max_departures: 10
 min_walk_time: 5  # Only show departures you can reach in 5 minutes
+leave_now_entity: binary_sensor.railboard_leave_now_cyp
+disruption_entity: binary_sensor.railboard_disruption_cyp
+punctuality_entity: sensor.railboard_punctuality_cyp
 ```
+
+For a bus stop, point `entity` at a `sensor.railboard_bus_<stop_id>` entity instead — the
+card detects the different attribute shape automatically and renders a bus arrivals
+board (line, destination, ETA in minutes and clock time, stop letter) rather than a
+train departure board. `leave_now_entity`/`disruption_entity` also accept the bus
+equivalents (`binary_sensor.railboard_bus_leave_now_<stop_id>` /
+`binary_sensor.railboard_bus_disruption_<stop_id>`).

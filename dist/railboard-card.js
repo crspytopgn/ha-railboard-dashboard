@@ -13,6 +13,13 @@ function parseIntOrDefault(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function formatClockTime(isoOrTime) {
+  if (!isoOrTime) return '';
+  const d = new Date(isoOrTime);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
 const TOC_COLOURS = {
   'Southern': '#00A651',
   'Southeastern': '#00AFEB',
@@ -146,6 +153,32 @@ const CARD_STYLES = `
   }
   .railboard-empty-icon { font-size: 32px; opacity: .35; }
   .railboard-empty-text { margin-top: 8px; font-size: 13px; }
+  .railboard-alerts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .railboard-alert {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .railboard-alert--leave { background: #34C759; }
+  .railboard-alert--disruption { background: #FF3B30; }
+  .railboard-footer {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--divider-color, rgba(0,0,0,.08));
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    text-align: center;
+  }
   .railboard-list {
     border-radius: 10px;
     overflow: hidden;
@@ -271,6 +304,9 @@ class RailboardCard extends HTMLElement {
       show_arrival_time: true,
       max_departures: 10,
       min_walk_time: 0,
+      leave_now_entity: "",
+      disruption_entity: "",
+      punctuality_entity: "",
     };
   }
 
@@ -289,6 +325,9 @@ class RailboardCard extends HTMLElement {
       show_arrival_time: config.show_arrival_time !== false,
       max_departures: Number.isFinite(config.max_departures) ? config.max_departures : 10,
       min_walk_time: Number.isFinite(config.min_walk_time) ? config.min_walk_time : 0,
+      leave_now_entity: config.leave_now_entity || null,
+      disruption_entity: config.disruption_entity || null,
+      punctuality_entity: config.punctuality_entity || null,
     };
   }
 
@@ -323,105 +362,191 @@ class RailboardCard extends HTMLElement {
 
   renderCard(entity) {
     this._lastEntity = entity;
-    const departures = entity.attributes.departures || [];
+
+    const isBusMode = Array.isArray(entity.attributes.arrivals);
+    const items = isBusMode ? (entity.attributes.arrivals || []) : (entity.attributes.departures || []);
 
     let html = '';
 
     if (this.config.title) {
+      const subtitle = isBusMode
+        ? (Number.isFinite(Number(entity.state)) ? `Next bus in ${escapeHtml(entity.state)} min` : 'Bus arrivals')
+        : `${escapeHtml(entity.state)} departures`;
       html += `
         <div class="railboard-header">
           <div class="railboard-title">${escapeHtml(this.config.title)}</div>
-          <div class="railboard-subtitle">${escapeHtml(entity.state)} departures</div>
+          <div class="railboard-subtitle">${subtitle}</div>
         </div>
       `;
     }
 
+    html += this._renderAlerts();
+
     const now = new Date();
-    const filteredDeps = departures.filter(dep => {
+    const filteredItems = items.filter(item => {
       if (!this.config.min_walk_time) return true;
-      if (!dep.expected) return false;
-      const [h, m] = dep.expected.split(':').map(Number);
+      if (isBusMode) {
+        return Number.isFinite(item.minutes) && item.minutes >= this.config.min_walk_time;
+      }
+      if (!item.expected) return false;
+      const [h, m] = item.expected.split(':').map(Number);
       const depTime = new Date();
       depTime.setHours(h, m, 0, 0);
       const diffMinutes = Math.round((depTime - now) / 60000);
       return diffMinutes >= this.config.min_walk_time;
     });
 
-    if (filteredDeps.length === 0) {
+    if (filteredItems.length === 0) {
+      const emptyText = isBusMode ? 'No buses due' : 'No departures available';
       html += `
         <div class="railboard-empty">
-          <div class="railboard-empty-icon">🚂</div>
-          <div class="railboard-empty-text">No departures available</div>
+          <div class="railboard-empty-icon">${isBusMode ? '🚌' : '🚂'}</div>
+          <div class="railboard-empty-text">${emptyText}</div>
         </div>
       `;
     } else {
-      const maxDeps = Math.min(filteredDeps.length, this.config.max_departures);
+      const maxItems = Math.min(filteredItems.length, this.config.max_departures);
 
       html += `<div class="railboard-list">`;
-
-      for (let i = 0; i < maxDeps; i++) {
-        const dep = filteredDeps[i];
-        const tocColour = getTocColour(dep.operator);
-        const tocAbbrev = escapeHtml(getTocAbbrev(dep.operator));
-        const severity = getSeverity(dep, tocColour);
-
-        let arrivalText = '';
-        if (this.config.show_arrival_time && dep.arrival_time) {
-          const durationText = Number.isFinite(dep.duration_minutes) ? ` · ${dep.duration_minutes}m` : '';
-          arrivalText = `${escapeHtml(dep.arrival_time)}${durationText}`;
-        }
-
-        const sublineHtml = arrivalText
-          ? `<div class="railboard-subline"><span class="railboard-arrival">→ ${arrivalText}</span></div>`
-          : '';
-
-        const isExpandable = this.config.show_calling_points && !!dep.service_uid;
-        const isExpanded = isExpandable && this._expandedServices.has(dep.service_uid);
-        const chevronHtml = isExpandable
-          ? `<span class="railboard-chevron${isExpanded ? ' railboard-chevron--open' : ''}">›</span>`
-          : '';
-        const expandHtml = isExpanded ? this._renderExpandPanel(dep.service_uid) : '';
-
-        const badgeHtml = this.config.show_operator_badge
-          ? `<span class="railboard-badge" style="background: ${tocColour};">${tocAbbrev}</span>`
-          : '';
-
-        const platformHtml = this.config.show_platforms
-          ? `<div class="railboard-plat">Plat ${escapeHtml(dep.platform || '—')}</div>`
-          : '';
-
-        const statusHtml = this.config.show_status
-          ? `<div class="railboard-status">
-               <span class="railboard-pill" style="background: ${severity.pillBg}; color: ${severity.pillColor};${severity.pillBorder ? ' border: 1px solid var(--divider-color, rgba(0,0,0,.15));' : ''}">${escapeHtml(severity.pillText)}</span>
-             </div>`
-          : '';
-
-        const strikeStyle = severity.strike ? 'text-decoration: line-through; opacity: .6;' : '';
-
-        html += `
-          <div class="railboard-row${isExpandable ? ' railboard-row--expandable' : ''}" style="border-left-color: ${severity.accent};${severity.rowTint ? ` background: ${severity.rowTint};` : ''}"${isExpandable ? ` data-service-uid="${escapeHtml(dep.service_uid)}"` : ''}>
-            <div class="railboard-time-col">
-              <div class="railboard-time" style="color: ${severity.timeColor}; ${strikeStyle}">${escapeHtml(dep.expected)}</div>
-              ${platformHtml}
-            </div>
-            <div class="railboard-main">
-              <div class="railboard-line">
-                <span class="railboard-dest" style="${strikeStyle}">${escapeHtml(dep.destination)}</span>
-                ${badgeHtml}
-              </div>
-              ${sublineHtml}
-            </div>
-            ${statusHtml}
-            ${chevronHtml}
-          </div>
-          ${expandHtml}
-        `;
+      for (let i = 0; i < maxItems; i++) {
+        html += isBusMode ? this._renderBusRow(filteredItems[i]) : this._renderRailRow(filteredItems[i]);
       }
-
       html += `</div>`;
     }
 
+    html += this._renderFooter();
+
     this.content.innerHTML = html;
+  }
+
+  _getEntityState(entityId) {
+    if (!entityId || !this._hass) return null;
+    return this._hass.states[entityId] || null;
+  }
+
+  _renderAlerts() {
+    let html = '';
+
+    const leaveNow = this._getEntityState(this.config.leave_now_entity);
+    if (leaveNow && leaveNow.state === 'on') {
+      const minutes = Number.isFinite(leaveNow.attributes.minutes_until_departure)
+        ? leaveNow.attributes.minutes_until_departure
+        : leaveNow.attributes.minutes_until_arrival;
+      const minutesText = Number.isFinite(minutes) ? ` — ${escapeHtml(minutes)} min` : '';
+      html += `<div class="railboard-alert railboard-alert--leave">🚶 Leave now${minutesText}</div>`;
+    }
+
+    const disruption = this._getEntityState(this.config.disruption_entity);
+    if (disruption && disruption.state === 'on') {
+      const count = disruption.attributes.disrupted_count;
+      const countText = Number.isFinite(count) ? `${count} ` : '';
+      const label = count === 1 ? 'service' : 'services';
+      html += `<div class="railboard-alert railboard-alert--disruption">⚠️ ${escapeHtml(countText)}${label} disrupted</div>`;
+    }
+
+    return html ? `<div class="railboard-alerts">${html}</div>` : '';
+  }
+
+  _renderFooter() {
+    const punctuality = this._getEntityState(this.config.punctuality_entity);
+    if (!punctuality) return '';
+
+    const pct = parseFloat(punctuality.state);
+    if (!Number.isFinite(pct)) return '';
+
+    return `<div class="railboard-footer">📊 ${escapeHtml(Math.round(pct))}% on time today</div>`;
+  }
+
+  _renderRailRow(dep) {
+    const tocColour = getTocColour(dep.operator);
+    const tocAbbrev = escapeHtml(getTocAbbrev(dep.operator));
+    const severity = getSeverity(dep, tocColour);
+
+    let arrivalText = '';
+    if (this.config.show_arrival_time && dep.arrival_time) {
+      const durationText = Number.isFinite(dep.duration_minutes) ? ` · ${dep.duration_minutes}m` : '';
+      arrivalText = `${escapeHtml(dep.arrival_time)}${durationText}`;
+    }
+
+    const sublineHtml = arrivalText
+      ? `<div class="railboard-subline"><span class="railboard-arrival">→ ${arrivalText}</span></div>`
+      : '';
+
+    const isExpandable = this.config.show_calling_points && !!dep.service_uid;
+    const isExpanded = isExpandable && this._expandedServices.has(dep.service_uid);
+    const chevronHtml = isExpandable
+      ? `<span class="railboard-chevron${isExpanded ? ' railboard-chevron--open' : ''}">›</span>`
+      : '';
+    const expandHtml = isExpanded ? this._renderExpandPanel(dep.service_uid) : '';
+
+    const badgeHtml = this.config.show_operator_badge
+      ? `<span class="railboard-badge" style="background: ${tocColour};">${tocAbbrev}</span>`
+      : '';
+
+    const platformHtml = this.config.show_platforms
+      ? `<div class="railboard-plat">Plat ${escapeHtml(dep.platform || '—')}</div>`
+      : '';
+
+    const statusHtml = this.config.show_status
+      ? `<div class="railboard-status">
+           <span class="railboard-pill" style="background: ${severity.pillBg}; color: ${severity.pillColor};${severity.pillBorder ? ' border: 1px solid var(--divider-color, rgba(0,0,0,.15));' : ''}">${escapeHtml(severity.pillText)}</span>
+         </div>`
+      : '';
+
+    const strikeStyle = severity.strike ? 'text-decoration: line-through; opacity: .6;' : '';
+
+    return `
+      <div class="railboard-row${isExpandable ? ' railboard-row--expandable' : ''}" style="border-left-color: ${severity.accent};${severity.rowTint ? ` background: ${severity.rowTint};` : ''}"${isExpandable ? ` data-service-uid="${escapeHtml(dep.service_uid)}"` : ''}>
+        <div class="railboard-time-col">
+          <div class="railboard-time" style="color: ${severity.timeColor}; ${strikeStyle}">${escapeHtml(dep.expected)}</div>
+          ${platformHtml}
+        </div>
+        <div class="railboard-main">
+          <div class="railboard-line">
+            <span class="railboard-dest" style="${strikeStyle}">${escapeHtml(dep.destination)}</span>
+            ${badgeHtml}
+          </div>
+          ${sublineHtml}
+        </div>
+        ${statusHtml}
+        ${chevronHtml}
+      </div>
+      ${expandHtml}
+    `;
+  }
+
+  _renderBusRow(item) {
+    const BUS_RED = '#DC241F';
+    const minutes = Number.isFinite(item.minutes) ? item.minutes : null;
+    const isDue = minutes !== null && minutes <= 1;
+    const etaText = minutes === null ? '—' : (minutes <= 0 ? 'DUE' : `${minutes} min`);
+    const timeStyle = isDue ? `color: ${CRITICAL_RED}; font-weight: 800;` : `color: ${BUS_RED};`;
+
+    const clockTime = this.config.show_arrival_time ? formatClockTime(item.expected_arrival) : '';
+
+    const badgeHtml = this.config.show_operator_badge
+      ? `<span class="railboard-badge" style="background: ${BUS_RED};">${escapeHtml(item.line || '')}</span>`
+      : '';
+
+    const platformHtml = this.config.show_platforms && item.platform
+      ? `<div class="railboard-status"><span class="railboard-pill" style="color: var(--secondary-text-color); border: 1px solid var(--divider-color, rgba(0,0,0,.15));">${escapeHtml(item.platform)}</span></div>`
+      : '';
+
+    return `
+      <div class="railboard-row" style="border-left-color: ${BUS_RED};">
+        <div class="railboard-time-col">
+          <div class="railboard-time" style="${timeStyle}">${escapeHtml(etaText)}</div>
+          ${clockTime ? `<div class="railboard-plat">${escapeHtml(clockTime)}</div>` : ''}
+        </div>
+        <div class="railboard-main">
+          <div class="railboard-line">
+            <span class="railboard-dest">${escapeHtml(item.destination || item.towards || '')}</span>
+            ${badgeHtml}
+          </div>
+        </div>
+        ${platformHtml}
+      </div>
+    `;
   }
 
   _renderExpandPanel(uid) {
@@ -523,6 +648,24 @@ class RailboardCardEditor extends HTMLElement {
             <option value="">Select entity...</option>
           </select>
         </div>
+        <div class="entity-row">
+          <label>Leave Now Sensor (Optional)</label>
+          <select id="leave-now-picker">
+            <option value="">None</option>
+          </select>
+        </div>
+        <div class="entity-row">
+          <label>Disruption Sensor (Optional)</label>
+          <select id="disruption-picker">
+            <option value="">None</option>
+          </select>
+        </div>
+        <div class="entity-row">
+          <label>Punctuality Sensor (Optional)</label>
+          <select id="punctuality-picker">
+            <option value="">None</option>
+          </select>
+        </div>
         <div class="input-row">
           <label>Title (Optional)</label>
           <input type="text" id="title-input" value="${escapeHtml(this._config.title || '')}" placeholder="e.g., Crystal Palace" />
@@ -548,7 +691,7 @@ class RailboardCardEditor extends HTMLElement {
           <input type="checkbox" id="calling-switch" ${this._config.show_calling_points !== false ? 'checked' : ''} />
         </div>
         <div class="switch-row">
-          <label>Show Operator Badge</label>
+          <label>Show Operator / Line Badge</label>
           <input type="checkbox" id="badge-switch" ${this._config.show_operator_badge !== false ? 'checked' : ''} />
         </div>
         <div class="switch-row">
@@ -570,19 +713,48 @@ class RailboardCardEditor extends HTMLElement {
 
   updateEntityPicker() {
     if (!this._hass) return;
-    const select = this.querySelector('#entity-picker');
+    const allEntities = Object.keys(this._hass.states);
+
+    this._populateSelect(
+      '#entity-picker',
+      allEntities.filter(eid => eid.startsWith('sensor.railboard_departures') || eid.startsWith('sensor.railboard_bus_')),
+      this._config.entity,
+      'Select entity...'
+    );
+    this._populateSelect(
+      '#leave-now-picker',
+      allEntities.filter(eid => eid.startsWith('binary_sensor.railboard_leave_now_') || eid.startsWith('binary_sensor.railboard_bus_leave_now_')),
+      this._config.leave_now_entity,
+      'None'
+    );
+    this._populateSelect(
+      '#disruption-picker',
+      allEntities.filter(eid => eid.startsWith('binary_sensor.railboard_disruption_') || eid.startsWith('binary_sensor.railboard_bus_disruption_')),
+      this._config.disruption_entity,
+      'None'
+    );
+    this._populateSelect(
+      '#punctuality-picker',
+      allEntities.filter(eid => eid.startsWith('sensor.railboard_punctuality_')),
+      this._config.punctuality_entity,
+      'None'
+    );
+  }
+
+  _populateSelect(selector, entities, currentValue, noneLabel) {
+    const select = this.querySelector(selector);
     if (!select) return;
 
-    const entities = Object.keys(this._hass.states)
-      .filter(eid => eid.startsWith('sensor.railboard_departures'))
-      .sort();
-
-    select.innerHTML = '<option value="">Select entity...</option>' +
-      entities.map(eid => `<option value="${escapeHtml(eid)}" ${eid === this._config.entity ? 'selected' : ''}>${escapeHtml(eid)}</option>`).join('');
+    const sorted = entities.slice().sort();
+    select.innerHTML = `<option value="">${escapeHtml(noneLabel)}</option>` +
+      sorted.map(eid => `<option value="${escapeHtml(eid)}" ${eid === currentValue ? 'selected' : ''}>${escapeHtml(eid)}</option>`).join('');
   }
 
   setupListeners() {
     const entityPicker = this.querySelector('#entity-picker');
+    const leaveNowPicker = this.querySelector('#leave-now-picker');
+    const disruptionPicker = this.querySelector('#disruption-picker');
+    const punctualityPicker = this.querySelector('#punctuality-picker');
     const titleInput = this.querySelector('#title-input');
     const maxInput = this.querySelector('#max-input');
     const walkInput = this.querySelector('#walk-input');
@@ -593,6 +765,9 @@ class RailboardCardEditor extends HTMLElement {
     const arrivalSwitch = this.querySelector('#arrival-switch');
 
     if (entityPicker) entityPicker.addEventListener('change', e => { this._config = { ...this._config, entity: e.target.value }; this.configChanged(this._config); });
+    if (leaveNowPicker) leaveNowPicker.addEventListener('change', e => { this._config = { ...this._config, leave_now_entity: e.target.value }; this.configChanged(this._config); });
+    if (disruptionPicker) disruptionPicker.addEventListener('change', e => { this._config = { ...this._config, disruption_entity: e.target.value }; this.configChanged(this._config); });
+    if (punctualityPicker) punctualityPicker.addEventListener('change', e => { this._config = { ...this._config, punctuality_entity: e.target.value }; this.configChanged(this._config); });
     if (titleInput) titleInput.addEventListener('change', e => { this._config = { ...this._config, title: e.target.value }; this.configChanged(this._config); });
     if (maxInput) maxInput.addEventListener('change', e => { this._config = { ...this._config, max_departures: parseIntOrDefault(e.target.value, this._config.max_departures || 10) }; this.configChanged(this._config); });
     if (walkInput) walkInput.addEventListener('change', e => { this._config = { ...this._config, min_walk_time: parseIntOrDefault(e.target.value, this._config.min_walk_time || 0) }; this.configChanged(this._config); });
