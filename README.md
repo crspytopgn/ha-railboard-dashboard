@@ -21,6 +21,7 @@ A beautiful, **customizable UK train departure board card** for Home Assistant.
 ⚠️ **Disruption Alert** – A red strip flags active delays/cancellations without scanning the whole list  
 📊 **Punctuality Footer** – Shows today's rolling on-time percentage  
 🚌 **Bus Support** – Point the card at a `sensor.railboard_bus_<stop_id>` entity and it automatically renders a bus arrivals board instead  
+🚉🚌 **Combined Boards** – Add extra rail and/or bus entities and the card shows each as its own labeled section, in one card  
 📱 **Responsive Layout** – Adapts to tablets, phones, and large screens  
 🌙 **Theme Support** – Automatically matches your Home Assistant theme  
 
@@ -77,6 +78,7 @@ Tapping a departure to expand its calling points calls the integration's
 4. Select it  
 5. Configure in the editor:  
    - Choose your Railboard sensor (a `sensor.railboard_departures_*` or `sensor.railboard_bus_*` entity — the card auto-detects which one you picked)  
+   - Optional: add **Additional Boards** to combine more rail/bus entities into the same card, each shown as its own labeled section  
    - Optional: pick a Leave Now / Disruption / Punctuality sensor to enable those banners and footer  
    - Optional: Set a card title  
    - Choose a **Board Style**: Modern (default) or Dot Matrix (retro amber LED look, forced black background regardless of your Home Assistant theme)  
@@ -110,3 +112,22 @@ board (line, destination, ETA in minutes and clock time, stop letter) rather tha
 train departure board. `leave_now_entity`/`disruption_entity` also accept the bus
 equivalents (`binary_sensor.railboard_bus_leave_now_<stop_id>` /
 `binary_sensor.railboard_bus_disruption_<stop_id>`).
+
+### Combining rail and bus boards in one card
+
+Add an `entities` list (rail and/or bus entities, any mix) alongside the primary
+`entity` to show more than one board in the same card. Each extra entity gets its
+own labeled section (e.g. "🚆 Trains · Crystal Palace" / "🚌 Buses · Crystal Palace
+Station"), using each entity's own `station_name`/`stop_name` attribute for the
+label automatically:
+
+```yaml
+type: custom:railboard-card
+entity: sensor.railboard_departures_crystal_palace
+entities:
+  - sensor.railboard_bus_490008660n
+title: Crystal Palace - All Options
+```
+
+Section labels only appear once you have more than one board configured — a single
+`entity` with no `entities` looks exactly as it always has.

@@ -175,6 +175,16 @@ const CARD_STYLES = `
   }
   .railboard-alert--leave { background: #34C759; }
   .railboard-alert--disruption { background: #FF3B30; }
+  .railboard-section + .railboard-section { margin-top: 18px; }
+  .railboard-section-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--secondary-text-color);
+    margin-bottom: 6px;
+  }
+  .railboard-empty--compact { padding: 16px; }
   .railboard-footer {
     margin-top: 12px;
     padding-top: 10px;
@@ -339,6 +349,7 @@ const CARD_STYLES = `
   .railboard-theme-dot-matrix .railboard-alert--leave,
   .railboard-theme-dot-matrix .railboard-title,
   .railboard-theme-dot-matrix .railboard-subtitle,
+  .railboard-theme-dot-matrix .railboard-section-label,
   .railboard-theme-dot-matrix .railboard-plat,
   .railboard-theme-dot-matrix .railboard-dest,
   .railboard-theme-dot-matrix .railboard-arrival,
@@ -366,6 +377,7 @@ class RailboardCard extends HTMLElement {
   static getStubConfig() {
     return {
       entity: "",
+      entities: [],
       title: "",
       board_style: "modern",
       show_platforms: true,
@@ -388,6 +400,7 @@ class RailboardCard extends HTMLElement {
 
     this.config = {
       entity: config.entity,
+      entities: Array.isArray(config.entities) ? config.entities.filter(eid => typeof eid === 'string' && eid) : [],
       title: config.title || null,
       board_style: config.board_style === 'dot_matrix' ? 'dot_matrix' : 'modern',
       show_platforms: config.show_platforms !== false,
@@ -429,24 +442,23 @@ class RailboardCard extends HTMLElement {
       return;
     }
 
-    this.renderCard(entity);
+    this.renderCard();
   }
 
-  renderCard(entity) {
-    this._lastEntity = entity;
+  renderCard() {
+    const hass = this._hass;
+    const primaryEntity = hass.states[this.config.entity];
 
     const themeClass = this.config.board_style === 'dot_matrix' ? 'railboard-theme-dot-matrix' : 'railboard-theme-modern';
     this.content.className = `card-content railboard-root ${themeClass}`;
 
-    const isBusMode = Array.isArray(entity.attributes.arrivals);
-    const items = isBusMode ? (entity.attributes.arrivals || []) : (entity.attributes.departures || []);
-
     let html = '';
 
     if (this.config.title) {
+      const isBusMode = Array.isArray(primaryEntity.attributes.arrivals);
       const subtitle = isBusMode
-        ? (Number.isFinite(Number(entity.state)) ? `Next bus in ${escapeHtml(entity.state)} min` : 'Bus arrivals')
-        : `${escapeHtml(entity.state)} departures`;
+        ? (Number.isFinite(Number(primaryEntity.state)) ? `Next bus in ${escapeHtml(primaryEntity.state)} min` : 'Bus arrivals')
+        : `${escapeHtml(primaryEntity.state)} departures`;
       html += `
         <div class="railboard-header">
           <div class="railboard-title">${escapeHtml(this.config.title)}</div>
@@ -456,6 +468,25 @@ class RailboardCard extends HTMLElement {
     }
 
     html += this._renderAlerts();
+
+    const entityIds = [...new Set([this.config.entity, ...this.config.entities])];
+    const showSectionLabels = entityIds.length > 1;
+    html += entityIds.map(eid => this._renderSection(hass.states[eid], eid, showSectionLabels)).join('');
+
+    html += this._renderFooter();
+
+    this.content.innerHTML = html;
+  }
+
+  _renderSection(entity, entityId, showLabel) {
+    if (!entity) {
+      return showLabel
+        ? `<div class="railboard-section"><div class="railboard-section-label">${escapeHtml(entityId)}</div><div class="railboard-empty railboard-empty--compact"><div class="railboard-empty-text">Entity not found</div></div></div>`
+        : `<div class="railboard-empty"><div class="railboard-empty-text">Entity ${escapeHtml(entityId)} not found</div></div>`;
+    }
+
+    const isBusMode = Array.isArray(entity.attributes.arrivals);
+    const items = isBusMode ? (entity.attributes.arrivals || []) : (entity.attributes.departures || []);
 
     const now = new Date();
     const filteredItems = items.filter(item => {
@@ -471,27 +502,37 @@ class RailboardCard extends HTMLElement {
       return diffMinutes >= this.config.min_walk_time;
     });
 
+    let inner = '';
     if (filteredItems.length === 0) {
       const emptyText = isBusMode ? 'No buses due' : 'No departures available';
-      html += `
-        <div class="railboard-empty">
+      inner = `
+        <div class="railboard-empty${showLabel ? ' railboard-empty--compact' : ''}">
           <div class="railboard-empty-icon">${isBusMode ? '🚌' : '🚂'}</div>
           <div class="railboard-empty-text">${emptyText}</div>
         </div>
       `;
     } else {
       const maxItems = Math.min(filteredItems.length, this.config.max_departures);
-
-      html += `<div class="railboard-list">`;
+      inner = `<div class="railboard-list">`;
       for (let i = 0; i < maxItems; i++) {
-        html += isBusMode ? this._renderBusRow(filteredItems[i]) : this._renderRailRow(filteredItems[i]);
+        inner += isBusMode ? this._renderBusRow(filteredItems[i]) : this._renderRailRow(filteredItems[i]);
       }
-      html += `</div>`;
+      inner += `</div>`;
     }
 
-    html += this._renderFooter();
+    if (!showLabel) return inner;
 
-    this.content.innerHTML = html;
+    const label = this._getSectionLabel(entity, isBusMode);
+    return `<div class="railboard-section"><div class="railboard-section-label">${label}</div>${inner}</div>`;
+  }
+
+  _getSectionLabel(entity, isBusMode) {
+    if (isBusMode) {
+      const stopName = entity.attributes.stop_name;
+      return `🚌 Buses${stopName ? ` · ${escapeHtml(stopName)}` : ''}`;
+    }
+    const stationName = entity.attributes.station_name;
+    return `🚆 Trains${stationName ? ` · ${escapeHtml(stationName)}` : ''}`;
   }
 
   _getEntityState(entityId) {
@@ -691,7 +732,7 @@ class RailboardCard extends HTMLElement {
   }
 
   _rerender() {
-    if (this._lastEntity) this.renderCard(this._lastEntity);
+    if (this._hass) this.renderCard();
   }
 
   getCardSize() { return 3; }
@@ -726,6 +767,13 @@ class RailboardCardEditor extends HTMLElement {
             <option value="">Select entity...</option>
           </select>
         </div>
+        <div class="entity-row">
+          <label>Additional Boards (Optional)</label>
+          <select id="add-entity-picker">
+            <option value="">+ Add another board...</option>
+          </select>
+        </div>
+        <div id="extra-entities-list" class="extra-entities-list"></div>
         <div class="entity-row">
           <label>Leave Now Sensor (Optional)</label>
           <select id="leave-now-picker">
@@ -790,6 +838,10 @@ class RailboardCardEditor extends HTMLElement {
         label { flex:1; font-weight:500; color: var(--primary-text-color); }
         select, input[type="text"], input[type="number"] { flex:2; padding:8px; border:1px solid var(--divider-color); border-radius:4px; background: var(--card-background-color); color: var(--primary-text-color); }
         input[type="checkbox"] { width:40px; height:20px; cursor:pointer; }
+        .extra-entities-list { margin: -4px 0 12px; }
+        .extra-entity-row { display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--divider-color); border-radius:4px; margin-bottom:6px; }
+        .extra-entity-name { flex:1; font-size:13px; color: var(--primary-text-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .extra-entity-remove { flex-shrink:0; width:22px; height:22px; border:none; border-radius:4px; background: var(--divider-color); color: var(--primary-text-color); cursor:pointer; font-size:14px; line-height:1; }
       </style>
     `;
     this.setupListeners();
@@ -799,13 +851,14 @@ class RailboardCardEditor extends HTMLElement {
   updateEntityPicker() {
     if (!this._hass) return;
     const allEntities = Object.keys(this._hass.states);
+    const boardEntities = allEntities.filter(eid => eid.startsWith('sensor.railboard_departures') || eid.startsWith('sensor.railboard_bus_'));
 
-    this._populateSelect(
-      '#entity-picker',
-      allEntities.filter(eid => eid.startsWith('sensor.railboard_departures') || eid.startsWith('sensor.railboard_bus_')),
-      this._config.entity,
-      'Select entity...'
-    );
+    this._populateSelect('#entity-picker', boardEntities, this._config.entity, 'Select entity...');
+
+    const usedIds = new Set([this._config.entity, ...(this._config.entities || [])].filter(Boolean));
+    this._populateSelect('#add-entity-picker', boardEntities.filter(eid => !usedIds.has(eid)), '', '+ Add another board...');
+    this._renderExtraEntitiesList();
+
     this._populateSelect(
       '#leave-now-picker',
       allEntities.filter(eid => eid.startsWith('binary_sensor.railboard_leave_now_') || eid.startsWith('binary_sensor.railboard_bus_leave_now_')),
@@ -835,8 +888,31 @@ class RailboardCardEditor extends HTMLElement {
       sorted.map(eid => `<option value="${escapeHtml(eid)}" ${eid === currentValue ? 'selected' : ''}>${escapeHtml(eid)}</option>`).join('');
   }
 
+  _renderExtraEntitiesList() {
+    const container = this.querySelector('#extra-entities-list');
+    if (!container) return;
+
+    const extras = this._config.entities || [];
+    container.innerHTML = extras.map(eid => `
+      <div class="extra-entity-row">
+        <span class="extra-entity-name">${escapeHtml(eid)}</span>
+        <button type="button" class="extra-entity-remove" data-entity="${escapeHtml(eid)}">×</button>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.extra-entity-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const eid = btn.dataset.entity;
+        this._config = { ...this._config, entities: (this._config.entities || []).filter(e => e !== eid) };
+        this.configChanged(this._config);
+        this.updateEntityPicker();
+      });
+    });
+  }
+
   setupListeners() {
     const entityPicker = this.querySelector('#entity-picker');
+    const addEntityPicker = this.querySelector('#add-entity-picker');
     const leaveNowPicker = this.querySelector('#leave-now-picker');
     const disruptionPicker = this.querySelector('#disruption-picker');
     const punctualityPicker = this.querySelector('#punctuality-picker');
@@ -850,7 +926,19 @@ class RailboardCardEditor extends HTMLElement {
     const badgeSwitch = this.querySelector('#badge-switch');
     const arrivalSwitch = this.querySelector('#arrival-switch');
 
-    if (entityPicker) entityPicker.addEventListener('change', e => { this._config = { ...this._config, entity: e.target.value }; this.configChanged(this._config); });
+    if (entityPicker) entityPicker.addEventListener('change', e => {
+      const newEntity = e.target.value;
+      this._config = { ...this._config, entity: newEntity, entities: (this._config.entities || []).filter(eid => eid !== newEntity) };
+      this.configChanged(this._config);
+      this.updateEntityPicker();
+    });
+    if (addEntityPicker) addEntityPicker.addEventListener('change', e => {
+      const val = e.target.value;
+      if (!val) return;
+      this._config = { ...this._config, entities: [...(this._config.entities || []), val] };
+      this.configChanged(this._config);
+      this.updateEntityPicker();
+    });
     if (leaveNowPicker) leaveNowPicker.addEventListener('change', e => { this._config = { ...this._config, leave_now_entity: e.target.value }; this.configChanged(this._config); });
     if (disruptionPicker) disruptionPicker.addEventListener('change', e => { this._config = { ...this._config, disruption_entity: e.target.value }; this.configChanged(this._config); });
     if (punctualityPicker) punctualityPicker.addEventListener('change', e => { this._config = { ...this._config, punctuality_entity: e.target.value }; this.configChanged(this._config); });
