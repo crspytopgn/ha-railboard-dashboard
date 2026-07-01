@@ -6,10 +6,6 @@
 
 A beautiful, **customizable UK train departure board card** for Home Assistant.
 
-![Railboard Card Preview](https://via.placeholder.com/800x400.png?text=Railboard+Card+Screenshot)
-![Railboard Card Responsive Preview](https://via.placeholder.com/400x600.png?text=Tablet+Responsive+View)
-![Railboard Card Walking Time Filter](https://via.placeholder.com/800x400.png?text=Walking+Time+Filter)
-
 ---
 
 ## Features
