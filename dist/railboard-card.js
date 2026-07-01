@@ -239,15 +239,13 @@ const CARD_STYLES = `
     color: #fff;
   }
   .railboard-badge--tiny {
-    display: inline-block;
     font-size: 8px;
     padding: 1px 4px;
     border-radius: 3px;
-    margin-top: 2px;
   }
   .railboard-subline {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 6px;
     margin-top: 1px;
   }
@@ -545,8 +543,12 @@ class RailboardCard extends HTMLElement {
       arrivalText = `${escapeHtml(dep.arrival_time)}${durationText}`;
     }
 
-    const sublineHtml = arrivalText
-      ? `<div class="railboard-subline"><span class="railboard-arrival">→ ${arrivalText}</span></div>`
+    const badgeHtml = this.config.show_operator_badge
+      ? `<span class="railboard-badge railboard-badge--tiny" style="background: ${tocColour};">${tocAbbrev}</span>`
+      : '';
+
+    const sublineHtml = (arrivalText || badgeHtml)
+      ? `<div class="railboard-subline">${arrivalText ? `<span class="railboard-arrival">→ ${arrivalText}</span>` : ''}${badgeHtml}</div>`
       : '';
 
     const isExpandable = this.config.show_calling_points && !!dep.service_uid;
@@ -555,10 +557,6 @@ class RailboardCard extends HTMLElement {
       ? `<span class="railboard-chevron${isExpanded ? ' railboard-chevron--open' : ''}">›</span>`
       : '';
     const expandHtml = isExpanded ? this._renderExpandPanel(dep.service_uid) : '';
-
-    const badgeHtml = this.config.show_operator_badge
-      ? `<div class="railboard-badge railboard-badge--tiny" style="background: ${tocColour};">${tocAbbrev}</div>`
-      : '';
 
     const platformHtml = this.config.show_platforms
       ? `<div class="railboard-plat">Plat ${escapeHtml(dep.platform || '—')}</div>`
@@ -581,7 +579,6 @@ class RailboardCard extends HTMLElement {
         <div class="railboard-time-col">
           <div class="railboard-time railboard-time--${severity.tier}" style="color: ${severity.timeColor}; ${strikeStyle}">${escapeHtml(dep.expected)}</div>
           ${platformHtml}
-          ${badgeHtml}
         </div>
         <div class="railboard-main">
           <div class="railboard-line">
