@@ -22,6 +22,7 @@ A beautiful, **customizable UK train departure board card** for Home Assistant.
 📊 **Punctuality Footer** – Shows today's rolling on-time percentage  
 🚌 **Bus Support** – Point the card at a `sensor.railboard_bus_<stop_id>` entity and it automatically renders a bus arrivals board instead  
 🚉🚌 **Combined Boards** – Add extra rail and/or bus entities and the card shows each as its own labeled section, in one card  
+🔀 **Journey Mode** – Point the card at a `sensor.railboard_journey_<id>` entity to see which of several rail/bus options gets you there soonest, with the best one highlighted  
 📱 **Responsive Layout** – Adapts to tablets, phones, and large screens  
 🌙 **Theme Support** – Automatically matches your Home Assistant theme  
 
@@ -131,6 +132,25 @@ title: Crystal Palace - All Options
 
 Section labels only appear once you have more than one board configured — a single
 `entity` with no `entities` looks exactly as it always has.
+
+### Journey mode
+
+Point `entity` (or an entry in `entities`) at a `sensor.railboard_journey_<id>`
+entity — a sensor that combines two or more already-configured rail stations
+and/or bus stops into a single "which option gets me there soonest" view. The
+card auto-detects it from its `options` attribute (a list of legs) and renders
+each as a row, sorted with the current `best_leg` first and tagged with a green
+**BEST** badge; delayed/cancelled options still show in red regardless of
+whether they're the fastest on paper:
+
+```yaml
+type: custom:railboard-card
+entity: sensor.railboard_journey_crystal_palace_bus
+title: Best Way to London Bridge
+```
+
+Journey sections can also be combined with rail/bus boards via `entities`, same
+as any other board type.
 
 ---
 

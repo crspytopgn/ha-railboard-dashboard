@@ -20,6 +20,25 @@ function formatClockTime(isoOrTime) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+function getBoardMode(entity) {
+  if (Array.isArray(entity.attributes.options)) return 'journey';
+  if (Array.isArray(entity.attributes.arrivals)) return 'bus';
+  return 'rail';
+}
+
+function getJourneySeverity(status) {
+  const s = (status || '').toLowerCase();
+  if (s.includes('cancel')) {
+    return { tier: 'critical', label: status || 'Cancelled' };
+  }
+  if (s.includes('delay')) {
+    const match = s.match(/(\d+)/);
+    const mins = match ? parseInt(match[1], 10) : 0;
+    return { tier: mins > 5 ? 'critical' : 'minor', label: status };
+  }
+  return { tier: 'ontime', label: status || 'On time' };
+}
+
 const TOC_COLOURS = {
   'Southern': '#00A651',
   'Southeastern': '#00AFEB',
@@ -266,6 +285,11 @@ const CARD_STYLES = `
     color: var(--secondary-text-color);
     font-variant-numeric: tabular-nums;
   }
+  .railboard-subtext {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--secondary-text-color);
+  }
   .railboard-status { flex: 0 0 auto; }
   .railboard-pill {
     display: inline-block;
@@ -353,6 +377,7 @@ const CARD_STYLES = `
   .railboard-theme-dot-matrix .railboard-plat,
   .railboard-theme-dot-matrix .railboard-dest,
   .railboard-theme-dot-matrix .railboard-arrival,
+  .railboard-theme-dot-matrix .railboard-subtext,
   .railboard-theme-dot-matrix .railboard-empty,
   .railboard-theme-dot-matrix .railboard-chevron,
   .railboard-theme-dot-matrix .railboard-footer,
@@ -455,10 +480,15 @@ class RailboardCard extends HTMLElement {
     let html = '';
 
     if (this.config.title) {
-      const isBusMode = Array.isArray(primaryEntity.attributes.arrivals);
-      const subtitle = isBusMode
-        ? (Number.isFinite(Number(primaryEntity.state)) ? `Next bus in ${escapeHtml(primaryEntity.state)} min` : 'Bus arrivals')
-        : `${escapeHtml(primaryEntity.state)} departures`;
+      const mode = getBoardMode(primaryEntity);
+      let subtitle;
+      if (mode === 'journey') {
+        subtitle = Number.isFinite(Number(primaryEntity.state)) ? `Best option in ${escapeHtml(primaryEntity.state)} min` : 'Journey options';
+      } else if (mode === 'bus') {
+        subtitle = Number.isFinite(Number(primaryEntity.state)) ? `Next bus in ${escapeHtml(primaryEntity.state)} min` : 'Bus arrivals';
+      } else {
+        subtitle = `${escapeHtml(primaryEntity.state)} departures`;
+      }
       html += `
         <div class="railboard-header">
           <div class="railboard-title">${escapeHtml(this.config.title)}</div>
@@ -485,7 +515,17 @@ class RailboardCard extends HTMLElement {
         : `<div class="railboard-empty"><div class="railboard-empty-text">Entity ${escapeHtml(entityId)} not found</div></div>`;
     }
 
-    const isBusMode = Array.isArray(entity.attributes.arrivals);
+    const mode = getBoardMode(entity);
+    const inner = mode === 'journey' ? this._renderJourneyList(entity, showLabel) : this._renderBoardList(entity, mode, showLabel);
+
+    if (!showLabel) return inner;
+
+    const label = this._getSectionLabel(entity, mode);
+    return `<div class="railboard-section"><div class="railboard-section-label">${label}</div>${inner}</div>`;
+  }
+
+  _renderBoardList(entity, mode, showLabel) {
+    const isBusMode = mode === 'bus';
     const items = isBusMode ? (entity.attributes.arrivals || []) : (entity.attributes.departures || []);
 
     const now = new Date();
@@ -502,32 +542,57 @@ class RailboardCard extends HTMLElement {
       return diffMinutes >= this.config.min_walk_time;
     });
 
-    let inner = '';
     if (filteredItems.length === 0) {
       const emptyText = isBusMode ? 'No buses due' : 'No departures available';
-      inner = `
+      return `
         <div class="railboard-empty${showLabel ? ' railboard-empty--compact' : ''}">
           <div class="railboard-empty-icon">${isBusMode ? '🚌' : '🚂'}</div>
           <div class="railboard-empty-text">${emptyText}</div>
         </div>
       `;
-    } else {
-      const maxItems = Math.min(filteredItems.length, this.config.max_departures);
-      inner = `<div class="railboard-list">`;
-      for (let i = 0; i < maxItems; i++) {
-        inner += isBusMode ? this._renderBusRow(filteredItems[i]) : this._renderRailRow(filteredItems[i]);
-      }
-      inner += `</div>`;
     }
 
-    if (!showLabel) return inner;
-
-    const label = this._getSectionLabel(entity, isBusMode);
-    return `<div class="railboard-section"><div class="railboard-section-label">${label}</div>${inner}</div>`;
+    const maxItems = Math.min(filteredItems.length, this.config.max_departures);
+    let inner = `<div class="railboard-list">`;
+    for (let i = 0; i < maxItems; i++) {
+      inner += isBusMode ? this._renderBusRow(filteredItems[i]) : this._renderRailRow(filteredItems[i]);
+    }
+    inner += `</div>`;
+    return inner;
   }
 
-  _getSectionLabel(entity, isBusMode) {
-    if (isBusMode) {
+  _renderJourneyList(entity, showLabel) {
+    const options = entity.attributes.options || [];
+    const bestLeg = entity.attributes.best_leg;
+
+    if (options.length === 0) {
+      return `
+        <div class="railboard-empty${showLabel ? ' railboard-empty--compact' : ''}">
+          <div class="railboard-empty-icon">🔀</div>
+          <div class="railboard-empty-text">No journey options available</div>
+        </div>
+      `;
+    }
+
+    const sorted = [...options].sort((a, b) => {
+      const aBest = a.leg === bestLeg ? 0 : 1;
+      const bBest = b.leg === bestLeg ? 0 : 1;
+      if (aBest !== bBest) return aBest - bBest;
+      return (Number.isFinite(a.minutes) ? a.minutes : Infinity) - (Number.isFinite(b.minutes) ? b.minutes : Infinity);
+    });
+
+    const maxItems = Math.min(sorted.length, this.config.max_departures);
+    let inner = `<div class="railboard-list">`;
+    for (let i = 0; i < maxItems; i++) {
+      inner += this._renderJourneyRow(sorted[i], sorted[i].leg === bestLeg);
+    }
+    inner += `</div>`;
+    return inner;
+  }
+
+  _getSectionLabel(entity, mode) {
+    if (mode === 'journey') return '🔀 Journey';
+    if (mode === 'bus') {
       const stopName = entity.attributes.stop_name;
       return `🚌 Buses${stopName ? ` · ${escapeHtml(stopName)}` : ''}`;
     }
@@ -664,6 +729,47 @@ class RailboardCard extends HTMLElement {
           </div>
         </div>
         ${platformHtml}
+      </div>
+    `;
+  }
+
+  _renderJourneyRow(option, isBest) {
+    const severity = getJourneySeverity(option.status);
+    const minutes = Number.isFinite(option.minutes) ? option.minutes : null;
+    const etaText = minutes === null ? '—' : (minutes <= 0 ? 'DUE' : `${minutes} min`);
+
+    const accent = severity.tier === 'critical' ? CRITICAL_RED : (isBest ? '#34C759' : 'transparent');
+    const timeColor = severity.tier === 'critical' ? CRITICAL_RED : 'var(--primary-text-color)';
+
+    const kindIcon = option.kind === 'bus' ? '🚌' : '🚆';
+    const kindLabel = option.kind === 'bus' ? 'Bus' : 'Rail';
+
+    const bestBadge = isBest ? `<span class="railboard-badge" style="background: #34C759;">BEST</span>` : '';
+
+    const showPill = severity.tier === 'critical' || (severity.tier === 'minor' && this.config.show_status);
+    const pillBg = severity.tier === 'critical' ? CRITICAL_RED : '#FF9500';
+    const statusHtml = showPill
+      ? `<div class="railboard-status"><span class="railboard-pill railboard-pill--${severity.tier}" style="background: ${pillBg}; color: #fff;">${escapeHtml(severity.label)}</span></div>`
+      : '';
+
+    const platformHtml = this.config.show_platforms && option.platform
+      ? `<div class="railboard-plat">Plat ${escapeHtml(option.platform)}</div>`
+      : '';
+
+    return `
+      <div class="railboard-row" style="border-left-color: ${accent};">
+        <div class="railboard-time-col">
+          <div class="railboard-time railboard-time--${severity.tier}" style="color: ${timeColor};">${escapeHtml(etaText)}</div>
+          ${platformHtml}
+        </div>
+        <div class="railboard-main">
+          <div class="railboard-line">
+            <span class="railboard-dest">${escapeHtml(option.leg || '')} → ${escapeHtml(option.destination || '')}</span>
+            ${bestBadge}
+          </div>
+          <div class="railboard-subline"><span class="railboard-subtext">${kindIcon} ${kindLabel}</span></div>
+        </div>
+        ${statusHtml}
       </div>
     `;
   }
