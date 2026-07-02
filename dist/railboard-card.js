@@ -252,8 +252,9 @@ const CARD_STYLES = `
   .railboard-line { display: flex; align-items: center; gap: 6px; }
   .railboard-dest {
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--primary-text-color);
+    opacity: .85;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
